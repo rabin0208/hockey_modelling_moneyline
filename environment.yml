@@ -1,0 +1,10 @@
+name: hockey_modelling
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.10
+  - pip
+  - pip:
+    - requests>=2.31.0
+    - nhl-api-py>=0.1.0

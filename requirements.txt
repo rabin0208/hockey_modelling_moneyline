@@ -1,0 +1,2 @@
+requests>=2.31.0
+nhl-api-py>=0.1.0
