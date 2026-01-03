@@ -31,14 +31,7 @@ ENV/
 *.ipynb
 
 # Data files
-data/
-*.csv
-*.json
-
-# Models
-models/
-*.pkl
-*.pickle
+data/*.json
 
 # IDE
 .vscode/
