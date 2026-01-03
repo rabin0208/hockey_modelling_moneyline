@@ -173,6 +173,107 @@ def calculate_team_stats_up_to_date(games_df, team_id, date, min_games=5):
     return stats
 
 
+def calculate_head_to_head(games_df, home_team_id, away_team_id, date, lookback_games=10):
+    """
+    Calculate head-to-head statistics between two teams.
+    
+    Args:
+        games_df: DataFrame with all games
+        home_team_id: Home team ID
+        away_team_id: Away team ID
+        date: Date to calculate stats up to
+        lookback_games: Number of recent H2H games to consider
+    
+    Returns:
+        Dictionary with head-to-head statistics
+    """
+    # Get all games between these two teams before the given date
+    h2h_games = games_df[
+        (games_df['date'] < date) &
+        (games_df['home_wins'].notna()) &  # Only completed games
+        (
+            ((games_df['home_team_id'] == home_team_id) & (games_df['away_team_id'] == away_team_id)) |
+            ((games_df['home_team_id'] == away_team_id) & (games_df['away_team_id'] == home_team_id))
+        )
+    ].sort_values('date', ascending=False)
+    
+    if len(h2h_games) == 0:
+        return None
+    
+    # Calculate overall H2H stats
+    home_team_wins = 0
+    away_team_wins = 0
+    home_team_goals = 0
+    away_team_goals = 0
+    
+    for _, game in h2h_games.iterrows():
+        is_home = game['home_team_id'] == home_team_id
+        
+        if is_home:
+            home_team_score = game['home_score']
+            away_team_score = game['away_score']
+            if game['home_wins'] == 1:
+                home_team_wins += 1
+            else:
+                away_team_wins += 1
+        else:
+            home_team_score = game['away_score']  # home_team_id was away in this game
+            away_team_score = game['home_score']
+            if game['home_wins'] == 0:
+                home_team_wins += 1
+            else:
+                away_team_wins += 1
+        
+        home_team_goals += home_team_score if pd.notna(home_team_score) else 0
+        away_team_goals += away_team_score if pd.notna(away_team_score) else 0
+    
+    total_h2h_games = len(h2h_games)
+    
+    # Get recent H2H games (last N games)
+    recent_h2h = h2h_games.head(lookback_games)
+    recent_home_wins = 0
+    recent_away_wins = 0
+    
+    for _, game in recent_h2h.iterrows():
+        is_home = game['home_team_id'] == home_team_id
+        if is_home:
+            if game['home_wins'] == 1:
+                recent_home_wins += 1
+            else:
+                recent_away_wins += 1
+        else:
+            if game['home_wins'] == 0:
+                recent_home_wins += 1
+            else:
+                recent_away_wins += 1
+    
+    # Get last meeting info
+    last_game = h2h_games.iloc[0] if len(h2h_games) > 0 else None
+    last_meeting_home_won = None
+    days_since_last_meeting = None
+    
+    if last_game is not None:
+        is_home = last_game['home_team_id'] == home_team_id
+        last_meeting_home_won = 1 if (is_home and last_game['home_wins'] == 1) or (not is_home and last_game['home_wins'] == 0) else 0
+        
+        # Calculate days since last meeting
+        last_date = pd.to_datetime(last_game['date'])
+        current_date = pd.to_datetime(date)
+        days_since_last_meeting = (current_date - last_date).days
+    
+    return {
+        'h2h_games': total_h2h_games,
+        'h2h_home_team_win_pct': home_team_wins / total_h2h_games if total_h2h_games > 0 else 0.5,
+        'h2h_home_team_goals_avg': home_team_goals / total_h2h_games if total_h2h_games > 0 else 0,
+        'h2h_away_team_goals_avg': away_team_goals / total_h2h_games if total_h2h_games > 0 else 0,
+        'h2h_goal_differential': (home_team_goals - away_team_goals) / total_h2h_games if total_h2h_games > 0 else 0,
+        'h2h_recent_games': len(recent_h2h),
+        'h2h_recent_home_win_pct': recent_home_wins / len(recent_h2h) if len(recent_h2h) > 0 else 0.5,
+        'last_meeting_home_won': last_meeting_home_won if last_meeting_home_won is not None else 0.5,
+        'days_since_last_meeting': days_since_last_meeting if days_since_last_meeting is not None else 999
+    }
+
+
 def calculate_recent_form(games_df, team_id, date, lookback_games=10):
     """
     Calculate recent form (last N games) for a team.
@@ -262,6 +363,9 @@ def create_features(games_df):
         home_recent = calculate_recent_form(games_df, home_team_id, game_date)
         away_recent = calculate_recent_form(games_df, away_team_id, game_date)
         
+        # Get head-to-head statistics
+        h2h_stats = calculate_head_to_head(games_df, home_team_id, away_team_id, game_date)
+        
         # Skip if we don't have enough data
         if not home_stats or not away_stats:
             continue
@@ -301,6 +405,14 @@ def create_features(games_df):
             # Difference features
             'win_pct_diff': home_stats['win_pct'] - away_stats['win_pct'],
             'goal_differential_diff': home_stats['goal_differential_avg'] - away_stats['goal_differential_avg'],
+            
+            # Head-to-head features
+            'h2h_games': h2h_stats['h2h_games'] if h2h_stats else 0,
+            'h2h_home_win_pct': h2h_stats['h2h_home_team_win_pct'] if h2h_stats else 0.5,
+            'h2h_goal_differential': h2h_stats['h2h_goal_differential'] if h2h_stats else 0,
+            'h2h_recent_home_win_pct': h2h_stats['h2h_recent_home_win_pct'] if h2h_stats else 0.5,
+            'last_meeting_home_won': h2h_stats['last_meeting_home_won'] if h2h_stats else 0.5,
+            'days_since_last_meeting': h2h_stats['days_since_last_meeting'] if h2h_stats else 999,
             
             # Target variable
             'home_wins': game['home_wins'],

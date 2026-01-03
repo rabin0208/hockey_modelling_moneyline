@@ -96,3 +96,35 @@ This will:
 - Save the optimized model to `models/logistic_regression_optimized.pkl`
 
 **Note:** This uses randomized search (faster than grid search) and tests 50 parameter combinations. Takes a few minutes to run.
+
+## Train Random Forest Model
+
+Train a Random Forest classifier (often performs better than logistic regression):
+
+```bash
+python src/train_random_forest.py
+```
+
+This will:
+- Train a Random Forest model with default hyperparameters
+- Evaluate performance on test set
+- Display feature importance rankings
+- Save the model to `models/random_forest_model.pkl`
+
+**Note:** Random Forest can capture non-linear relationships and often achieves better accuracy than logistic regression.
+
+## Optimize Random Forest Model
+
+Perform hyperparameter optimization for the Random Forest model:
+
+```bash
+python src/optimize_random_forest.py
+```
+
+This will:
+- Perform randomized search with cross-validation
+- Test 50 random combinations of hyperparameters (n_estimators, max_depth, min_samples_split, etc.)
+- Find the best hyperparameters that reduce overfitting
+- Save the optimized model to `models/random_forest_optimized.pkl`
+
+**Note:** This uses randomized search and tests 50 parameter combinations. Takes several minutes to run.
