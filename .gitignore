@@ -34,12 +34,11 @@ ENV/
 data/
 *.csv
 *.json
-*.pkl
-*.pickle
 
 # Models
-models/*.pkl
-models/*.pickle
+models/
+*.pkl
+*.pickle
 
 # IDE
 .vscode/
@@ -55,4 +54,3 @@ models/*.pickle
 # OS
 .DS_Store
 Thumbs.db
-
