@@ -37,12 +37,24 @@ def prepare_features(df):
     
     feature_cols = [col for col in df.columns if col not in exclude_cols]
     
+    X = df[feature_cols].copy()
+    y = df['home_wins'].astype(int)
+    
+    # Drop rows with any NaN values (only ~2% of data)
+    # This ensures consistency with other models
+    before_drop = len(X)
+    valid_mask = X.notna().all(axis=1)
+    X = X[valid_mask].copy()
+    y = y[valid_mask].copy()
+    after_drop = len(X)
+    
+    if before_drop != after_drop:
+        print(f"\nDropped {before_drop - after_drop} games with missing values ({((before_drop - after_drop)/before_drop)*100:.1f}%)")
+        print(f"  Using {after_drop} games with complete data")
+    
     print(f"\nFeatures used ({len(feature_cols)}):")
     for col in feature_cols:
         print(f"  - {col}")
-    
-    X = df[feature_cols]
-    y = df['home_wins'].astype(int)
     
     return X, y, feature_cols
 

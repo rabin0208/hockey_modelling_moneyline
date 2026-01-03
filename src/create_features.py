@@ -11,6 +11,17 @@ import pandas as pd
 from datetime import datetime
 from collections import defaultdict
 
+# Try to load NST data (optional)
+NST_DATA = None
+try:
+    nst_file = os.path.join('data', 'nst_processed.csv')
+    if os.path.exists(nst_file):
+        NST_DATA = pd.read_csv(nst_file)
+        NST_DATA['date'] = pd.to_datetime(NST_DATA['date']).dt.date
+        print(f"✓ Loaded Natural Stat Trick data: {len(NST_DATA)} records")
+except Exception as e:
+    print(f"Note: Natural Stat Trick data not available: {e}")
+
 
 def load_games(data_dir):
     """Load all games from JSON files."""
@@ -171,6 +182,90 @@ def calculate_team_stats_up_to_date(games_df, team_id, date, min_games=5):
     }
     
     return stats
+
+
+def calculate_nst_stats_up_to_date(team_name, date, min_games=5):
+    """
+    Calculate Natural Stat Trick advanced stats for a team up to a given date.
+    
+    Args:
+        team_name: Team name (must match NST data)
+        date: Date to calculate stats up to (exclusive)
+        min_games: Minimum games required
+    
+    Returns:
+        Dictionary with NST statistics or None
+    """
+    if NST_DATA is None or len(NST_DATA) == 0:
+        return None
+    
+    # Ensure date is a date object for comparison
+    if isinstance(date, pd.Timestamp):
+        date = date.date()
+    elif isinstance(date, str):
+        date = pd.to_datetime(date).date()
+    
+    # Filter to this team's games before the date
+    # Ensure NST_DATA dates are also date objects
+    team_games = NST_DATA[
+        (NST_DATA['team_name'] == team_name) &
+        (NST_DATA['date'] < date)
+    ].copy()
+    
+    if len(team_games) < min_games:
+        return None
+    
+    # Calculate averages (handle None values)
+    def safe_mean(series):
+        valid = series.dropna()
+        return valid.mean() if len(valid) > 0 else None
+    
+    stats = {
+        'xgf_pct_avg': safe_mean(team_games['xGF%']) if 'xGF%' in team_games.columns else None,
+        'cf_pct_avg': safe_mean(team_games['CF%']) if 'CF%' in team_games.columns else None,
+        'ff_pct_avg': safe_mean(team_games['FF%']) if 'FF%' in team_games.columns else None,
+        'sf_pct_avg': safe_mean(team_games['SF%']) if 'SF%' in team_games.columns else None,
+        'hdcf_pct_avg': safe_mean(team_games['HDCF%']) if 'HDCF%' in team_games.columns else None,
+        'scf_pct_avg': safe_mean(team_games['SCF%']) if 'SCF%' in team_games.columns else None,
+        'pdo_avg': safe_mean(team_games['PDO']) if 'PDO' in team_games.columns else None,
+        'xgf_avg': safe_mean(team_games['xGF']) if 'xGF' in team_games.columns else None,
+        'xga_avg': safe_mean(team_games['xGA']) if 'xGA' in team_games.columns else None,
+    }
+    
+    return stats
+
+
+def match_team_name_to_nst(our_team_name):
+    """
+    Match our team name format to NST team name format.
+    
+    Args:
+        our_team_name: Team name from our data
+    
+    Returns:
+        NST team name or None
+    """
+    if NST_DATA is None:
+        return None
+    
+    our_lower = our_team_name.lower()
+    nst_teams = NST_DATA['team_name'].unique()
+    
+    # Try exact match
+    for nst_team in nst_teams:
+        if nst_team.lower() == our_lower:
+            return nst_team
+    
+    # Try partial match
+    for nst_team in nst_teams:
+        nst_lower = nst_team.lower()
+        # Check if key words match
+        our_words = set(our_lower.split())
+        nst_words = set(nst_lower.split())
+        if our_words & nst_words:  # If there's any overlap
+            return nst_team
+    
+    return None
 
 
 def calculate_head_to_head(games_df, home_team_id, away_team_id, date, lookback_games=10):
@@ -366,6 +461,12 @@ def create_features(games_df):
         # Get head-to-head statistics
         h2h_stats = calculate_head_to_head(games_df, home_team_id, away_team_id, game_date)
         
+        # Get Natural Stat Trick advanced stats
+        home_nst_name = match_team_name_to_nst(game['home_team_name'])
+        away_nst_name = match_team_name_to_nst(game['away_team_name'])
+        home_nst = calculate_nst_stats_up_to_date(home_nst_name, game_date) if home_nst_name else None
+        away_nst = calculate_nst_stats_up_to_date(away_nst_name, game_date) if away_nst_name else None
+        
         # Skip if we don't have enough data
         if not home_stats or not away_stats:
             continue
@@ -413,6 +514,20 @@ def create_features(games_df):
             'h2h_recent_home_win_pct': h2h_stats['h2h_recent_home_win_pct'] if h2h_stats else 0.5,
             'last_meeting_home_won': h2h_stats['last_meeting_home_won'] if h2h_stats else 0.5,
             'days_since_last_meeting': h2h_stats['days_since_last_meeting'] if h2h_stats else 999,
+            
+            # Natural Stat Trick advanced stats (if available)
+            'home_xgf_pct_avg': home_nst['xgf_pct_avg'] if home_nst and home_nst.get('xgf_pct_avg') is not None else None,
+            'home_cf_pct_avg': home_nst['cf_pct_avg'] if home_nst and home_nst.get('cf_pct_avg') is not None else None,
+            'home_hdcf_pct_avg': home_nst['hdcf_pct_avg'] if home_nst and home_nst.get('hdcf_pct_avg') is not None else None,
+            'home_scf_pct_avg': home_nst['scf_pct_avg'] if home_nst and home_nst.get('scf_pct_avg') is not None else None,
+            'home_pdo_avg': home_nst['pdo_avg'] if home_nst and home_nst.get('pdo_avg') is not None else None,
+            'away_xgf_pct_avg': away_nst['xgf_pct_avg'] if away_nst and away_nst.get('xgf_pct_avg') is not None else None,
+            'away_cf_pct_avg': away_nst['cf_pct_avg'] if away_nst and away_nst.get('cf_pct_avg') is not None else None,
+            'away_hdcf_pct_avg': away_nst['hdcf_pct_avg'] if away_nst and away_nst.get('hdcf_pct_avg') is not None else None,
+            'away_scf_pct_avg': away_nst['scf_pct_avg'] if away_nst and away_nst.get('scf_pct_avg') is not None else None,
+            'away_pdo_avg': away_nst['pdo_avg'] if away_nst and away_nst.get('pdo_avg') is not None else None,
+            'xgf_pct_diff': (home_nst['xgf_pct_avg'] - away_nst['xgf_pct_avg']) if (home_nst and away_nst and home_nst.get('xgf_pct_avg') is not None and away_nst.get('xgf_pct_avg') is not None) else None,
+            'cf_pct_diff': (home_nst['cf_pct_avg'] - away_nst['cf_pct_avg']) if (home_nst and away_nst and home_nst.get('cf_pct_avg') is not None and away_nst.get('cf_pct_avg') is not None) else None,
             
             # Target variable
             'home_wins': game['home_wins'],

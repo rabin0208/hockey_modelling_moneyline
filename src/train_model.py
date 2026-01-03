@@ -34,6 +34,18 @@ def prepare_features(df):
     X = df[feature_cols].copy()
     y = df['home_wins'].copy()
     
+    # Drop rows with any NaN values (only ~2% of data)
+    # This is better than imputing since we have good coverage
+    before_drop = len(X)
+    valid_mask = X.notna().all(axis=1)
+    X = X[valid_mask].copy()
+    y = y[valid_mask].copy()
+    after_drop = len(X)
+    
+    if before_drop != after_drop:
+        print(f"\nDropped {before_drop - after_drop} games with missing values ({((before_drop - after_drop)/before_drop)*100:.1f}%)")
+        print(f"  Using {after_drop} games with complete data")
+    
     print(f"\nFeatures used ({len(feature_cols)}):")
     for col in feature_cols:
         print(f"  - {col}")
@@ -53,6 +65,7 @@ def train_model(X, y, test_size=0.2, random_state=42):
     
     print("\nTraining logistic regression model with StandardScaler pipeline...")
     # Create pipeline with StandardScaler and LogisticRegression
+    # Note: Missing values are already dropped in prepare_features()
     model = make_pipeline(
         StandardScaler(),
         LogisticRegression(

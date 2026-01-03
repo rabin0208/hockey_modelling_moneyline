@@ -35,12 +35,24 @@ def prepare_features(df):
     
     feature_cols = [col for col in df.columns if col not in exclude_cols]
     
+    X = df[feature_cols].copy()
+    y = df['home_wins'].astype(int)
+    
+    # Drop rows with any NaN values (only ~2% of data)
+    # This ensures consistency with logistic regression models
+    before_drop = len(X)
+    valid_mask = X.notna().all(axis=1)
+    X = X[valid_mask].copy()
+    y = y[valid_mask].copy()
+    after_drop = len(X)
+    
+    if before_drop != after_drop:
+        print(f"\nDropped {before_drop - after_drop} games with missing values ({((before_drop - after_drop)/before_drop)*100:.1f}%)")
+        print(f"  Using {after_drop} games with complete data")
+    
     print(f"\nFeatures used ({len(feature_cols)}):")
     for col in feature_cols:
         print(f"  - {col}")
-    
-    X = df[feature_cols]
-    y = df['home_wins'].astype(int)
     
     return X, y, feature_cols
 
@@ -52,11 +64,11 @@ def train_random_forest(X_train, y_train, random_state=42, **kwargs):
     # Default Random Forest parameters (more conservative to prevent overfitting)
     default_params = {
         'n_estimators': 100,
-        'max_depth': 10,  # Reduced from 20 to prevent overfitting
-        'min_samples_split': 20,  # Increased from 10 to require more samples per split
-        'min_samples_leaf': 10,  # Increased from 4 to require more samples per leaf
+        'max_depth': 8,  # Further reduced to prevent overfitting
+        'min_samples_split': 30,  # Increased to require more samples per split
+        'min_samples_leaf': 15,  # Increased to require more samples per leaf
         'max_features': 'sqrt',  # Use sqrt of features (good default)
-        'max_samples': 0.8,  # Use 80% of samples per tree (bootstrap sampling)
+        'max_samples': 0.7,  # Use 70% of samples per tree (more regularization)
         'random_state': random_state,
         'n_jobs': -1,
         'verbose': 0
