@@ -248,22 +248,43 @@ def match_team_name_to_nst(our_team_name):
     if NST_DATA is None:
         return None
     
-    our_lower = our_team_name.lower()
+    # Normalize team name (remove accents, periods, etc.)
+    def normalize_name(name):
+        # Remove accents (Montréal -> Montreal)
+        import unicodedata
+        name = unicodedata.normalize('NFD', name).encode('ascii', 'ignore').decode('ascii')
+        # Remove periods (St. Louis -> St Louis)
+        name = name.replace('.', '')
+        # Lowercase and strip
+        return name.lower().strip()
+    
+    our_normalized = normalize_name(our_team_name)
     nst_teams = NST_DATA['team_name'].unique()
     
-    # Try exact match
+    # Try exact match (normalized)
     for nst_team in nst_teams:
-        if nst_team.lower() == our_lower:
+        if normalize_name(nst_team) == our_normalized:
             return nst_team
     
-    # Try partial match
+    # Try partial match (normalized)
     for nst_team in nst_teams:
-        nst_lower = nst_team.lower()
+        nst_normalized = normalize_name(nst_team)
         # Check if key words match
-        our_words = set(our_lower.split())
-        nst_words = set(nst_lower.split())
+        our_words = set(our_normalized.split())
+        nst_words = set(nst_normalized.split())
         if our_words & nst_words:  # If there's any overlap
             return nst_team
+    
+    # Special cases for teams that don't exist in NST data
+    # (e.g., Utah teams that relocated after NST data ends)
+    if 'utah' in our_normalized:
+        # Utah teams are new (2024-25 season), NST data ends 2024-04-18
+        # Try to match to Arizona Coyotes (the team that relocated)
+        for nst_team in nst_teams:
+            if 'arizona' in normalize_name(nst_team) and 'coyotes' in normalize_name(nst_team):
+                # Don't match - Utah is a different team
+                pass
+        return None
     
     return None
 
