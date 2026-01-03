@@ -128,3 +128,34 @@ This will:
 - Save the optimized model to `models/random_forest_optimized.pkl`
 
 **Note:** This uses randomized search and tests 50 parameter combinations. Takes several minutes to run.
+
+## Predict Upcoming Games
+
+Predict outcomes for upcoming games using a trained model:
+
+```bash
+python src/predict_games.py
+```
+
+Or specify a different model and time period:
+
+```bash
+python src/predict_games.py --model models/logistic_regression_optimized.pkl --days 14
+```
+
+This will:
+- Load a saved model (default: Random Forest optimized)
+- Fetch upcoming games from NHL API
+- Create features for each game using historical data
+- Make predictions with win probabilities
+- Display results with:
+  - Predicted winner
+  - Win probabilities for both teams
+  - Implied odds (American format)
+  - Confidence level
+
+**Available models:**
+- `models/random_forest_optimized.pkl` (default, best accuracy)
+- `models/logistic_regression_optimized.pkl`
+- `models/random_forest_model.pkl`
+- `models/logistic_regression_model.pkl`
