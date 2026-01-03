@@ -1,17 +1,14 @@
 """
-Fetch historical game data for the last two seasons using query builder pattern.
+Fetch historical game data for the last five seasons.
 
-This script fetches all games from the past two NHL seasons using the
-efficient query builder approach with season filters.
+This script fetches all games from the past five NHL seasons using
+date-based fetching (day-by-day).
 """
 
 import os
 import json
-from datetime import datetime
-from nhlpy.nhl_client import NHLClient
-from nhlpy.api.query.builder import QueryBuilder, QueryContext
-from nhlpy.api.query.filters.season import SeasonQuery
-from nhlpy.api.query.filters.game_type import GameTypeQuery
+from datetime import datetime, timedelta
+from nhlpy import NHLClient
 
 
 def ensure_data_folder():
@@ -22,110 +19,32 @@ def ensure_data_folder():
     return data_dir
 
 
-def fetch_games_for_season(client, season_start, season_end, data_dir, season_name, limit=100):
+def fetch_games_for_season(client, season_start, data_dir, season_name):
     """
-    Fetch all games for a season using query builder pattern.
+    Fetch all games for a season using date-based fetching.
     
     Args:
         client: NHLClient instance
         season_start: Season start in format YYYYYYYY (e.g., 20232024 for 2023-2024)
-        season_end: Season end in format YYYYYYYY (e.g., 20232024 for 2023-2024)
         data_dir: Directory to save data
         season_name: Name for the season (e.g., "2023_2024")
-        limit: Number of records per request (default 100)
     
     Returns:
         List of all games for the season
     """
     print(f"\nFetching games for {season_name} season...")
-    print(f"  Season: {season_start} to {season_end}")
-    print(f"  Game type: Regular season (2)")
-    
-    # Build query with filters
-    filters = [
-        SeasonQuery(season_start=season_start, season_end=season_end),
-        GameTypeQuery(game_type="2"),  # Regular season games
-    ]
-    
-    context: QueryContext = QueryBuilder().build(filters=filters)
-    
-    all_games = []
-    start = 0
-    
-    try:
-        while True:
-            print(f"  Fetching batch starting at {start}...")
-            
-            # Try to fetch games using query context
-            # Note: This may need adjustment based on actual nhlpy API methods
-            try:
-                # Try schedule method with query context if available
-                response = client.schedule.games_with_query_context(
-                    query_context=context,
-                    limit=limit,
-                    start=start
-                )
-            except AttributeError:
-                # If that method doesn't exist, try alternative approach
-                # Fall back to date-based fetching if query builder doesn't work for schedules
-                print("  Note: Query builder may not be available for schedules.")
-                print("  Falling back to alternative method...")
-                return fetch_games_alternative_method(client, season_start, data_dir, season_name)
-            
-            # Handle response
-            if isinstance(response, dict):
-                total = response.get('total', 0)
-                batch_data = response.get('data', [])
-                
-                if not batch_data:
-                    break
-                
-                all_games.extend(batch_data)
-                print(f"    Fetched {len(batch_data)} games (total: {len(all_games)})")
-                
-                if len(all_games) >= total or len(batch_data) < limit:
-                    break
-                
-                start += limit
-            else:
-                # Response might be a list directly
-                if isinstance(response, list):
-                    all_games.extend(response)
-                    print(f"    Fetched {len(response)} games (total: {len(all_games)})")
-                break
-                
-    except Exception as e:
-        print(f"  Error with query builder method: {e}")
-        print("  Falling back to alternative method...")
-        return fetch_games_alternative_method(client, season_start, data_dir, season_name)
-    
-    # Save all games for this season
-    output_file = os.path.join(data_dir, f"games_{season_name}.json")
-    with open(output_file, 'w') as f:
-        json.dump(all_games, f, indent=2)
-    
-    print(f"\n✓ Saved {len(all_games)} games to {output_file}")
-    
-    return all_games
-
-
-def fetch_games_alternative_method(client, season_start, data_dir, season_name):
-    """
-    Alternative method to fetch games if query builder doesn't work for schedules.
-    Uses date-based fetching as fallback.
-    """
-    from datetime import timedelta
-    
-    print(f"  Using date-based fetching for {season_name}...")
     
     # Extract year from season_start (first 4 digits)
     season_year = int(str(season_start)[:4])
     start_date = datetime(season_year, 10, 1)
     end_date = datetime(season_year + 1, 6, 30)
     
+    print(f"  Date range: {start_date.strftime('%Y-%m-%d')} to {end_date.strftime('%Y-%m-%d')}")
+    
     all_games = []
     current_date = start_date
     games_fetched = 0
+    errors = 0
     
     while current_date <= end_date:
         date_str = current_date.strftime('%Y-%m-%d')
@@ -146,24 +65,31 @@ def fetch_games_alternative_method(client, season_start, data_dir, season_name):
             
             games_fetched += len(games)
             
-            if len(games) > 0 and games_fetched % 50 == 0:
-                print(f"    Progress: {games_fetched} games fetched...")
+            if len(games) > 0:
+                print(f"  {date_str}: {len(games)} games")
+            elif games_fetched > 0 and games_fetched % 50 == 0:
+                print(f"  Progress: {games_fetched} games fetched...")
             
         except Exception as e:
-            pass  # Skip errors silently in fallback mode
+            errors += 1
+            if errors < 5:  # Only print first few errors
+                print(f"  Warning: Error fetching {date_str}: {e}")
         
         current_date += timedelta(days=1)
         
-        # Small delay
+        # Small delay to avoid rate limiting
         import time
-        time.sleep(0.05)
+        time.sleep(0.1)
     
-    # Save games
+    # Save all games for this season
     output_file = os.path.join(data_dir, f"games_{season_name}.json")
     with open(output_file, 'w') as f:
         json.dump(all_games, f, indent=2)
     
-    print(f"  ✓ Saved {len(all_games)} games to {output_file}")
+    print(f"\n✓ Saved {len(all_games)} games to {output_file}")
+    print(f"  Total games fetched: {games_fetched}")
+    if errors > 0:
+        print(f"  Errors encountered: {errors}")
     
     return all_games
 
@@ -181,7 +107,7 @@ def main():
     print("\nInitializing NHL client...")
     client = NHLClient(debug=False)
     
-    # Get current year to determine last two seasons
+    # Get current year to determine last five seasons
     current_year = datetime.now().year
     current_month = datetime.now().month
     
@@ -189,35 +115,32 @@ def main():
     # If we're past October, current season started this year
     # Otherwise, current season started last year
     if current_month >= 10:
-        season2_year = current_year  # Current season
-        season1_year = current_year - 1  # Last season
+        current_season_year = current_year  # Current season
+        last_completed_year = current_year - 1  # Last completed season
     else:
-        season2_year = current_year - 1  # Last season (ended)
-        season1_year = current_year - 2  # Season before that
+        current_season_year = current_year - 1  # Last season (ended)
+        last_completed_year = current_year - 2  # Season before that
     
-    # Format seasons as YYYYYYYY (e.g., 20232024 for 2023-2024 season)
-    season1_start = int(f"{season1_year}{season1_year+1}")
-    season1_end = season1_start
-    season1_name = f"{season1_year}_{season1_year+1}"
-    
-    season2_start = int(f"{season2_year}{season2_year+1}")
-    season2_end = season2_start
-    season2_name = f"{season2_year}_{season2_year+1}"
-    
-    seasons = [
-        (season1_start, season1_end, season1_name),
-        (season2_start, season2_end, season2_name)
-    ]
+    # Create list of 5 seasons (current + 4 previous)
+    seasons = []
+    for i in range(5):
+        season_year = current_season_year - i
+        season_start = int(f"{season_year}{season_year+1}")
+        season_name = f"{season_year}_{season_year+1}"
+        seasons.append((season_start, season_name))
     
     print(f"\nWill fetch data for:")
-    for start, end, name in seasons:
-        print(f"  - {name}: Season {start}")
+    for start, name in seasons:
+        season_year = int(str(start)[:4])
+        start_date = datetime(season_year, 10, 1)
+        end_date = datetime(season_year + 1, 6, 30)
+        print(f"  - {name}: {start_date.strftime('%Y-%m-%d')} to {end_date.strftime('%Y-%m-%d')}")
     
     all_season_games = []
     
-    # Fetch each season using query builder
-    for season_start, season_end, season_name in seasons:
-        games = fetch_games_for_season(client, season_start, season_end, data_dir, season_name)
+    # Fetch each season using date-based method
+    for season_start, season_name in seasons:
+        games = fetch_games_for_season(client, season_start, data_dir, season_name)
         all_season_games.extend(games)
     
     # Save combined file

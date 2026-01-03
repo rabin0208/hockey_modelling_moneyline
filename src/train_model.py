@@ -6,6 +6,8 @@ import os
 import pickle
 import pandas as pd
 from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler
+from sklearn.pipeline import make_pipeline
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
 
@@ -49,11 +51,15 @@ def train_model(X, y, test_size=0.2, random_state=42):
     print(f"  Training set: {len(X_train)} games")
     print(f"  Test set: {len(X_test)} games")
     
-    print("\nTraining logistic regression model...")
-    model = LogisticRegression(
-        max_iter=1000,
-        random_state=random_state,
-        solver='lbfgs'
+    print("\nTraining logistic regression model with StandardScaler pipeline...")
+    # Create pipeline with StandardScaler and LogisticRegression
+    model = make_pipeline(
+        StandardScaler(),
+        LogisticRegression(
+            max_iter=1000,
+            random_state=random_state,
+            solver='lbfgs'
+        )
     )
     
     model.fit(X_train, y_train)
@@ -90,15 +96,16 @@ def save_model(model, feature_cols, model_dir="models"):
         os.makedirs(model_dir)
         print(f"\nCreated {model_dir}/ folder")
     
-    # Save model
+    # Save model (pipeline includes scaler and classifier)
     model_file = os.path.join(model_dir, "logistic_regression_model.pkl")
     with open(model_file, 'wb') as f:
         pickle.dump({
-            'model': model,
+            'model': model,  # This is a Pipeline with StandardScaler + LogisticRegression
             'feature_columns': feature_cols
         }, f)
     
     print(f"\n✓ Model saved to {model_file}")
+    print(f"  Model includes: StandardScaler + LogisticRegression pipeline")
     return model_file
 
 

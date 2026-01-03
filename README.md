@@ -42,15 +42,17 @@ This will download:
 
 ## Fetch Historical Seasons
 
-Fetch game data for the last two seasons:
+Fetch game data for the last five seasons:
 
 ```bash
 python src/fetch_historical_seasons.py
 ```
 
-This will download all games from the past two NHL seasons and save them to:
+This will download all games from the past five NHL seasons and save them to:
 - `data/games_YYYY_YYYY.json` (individual season files)
 - `data/games_all_seasons.json` (combined file)
+
+**Note:** This will take longer to run as it fetches 5 seasons of data (approximately 5,000+ games).
 
 ## Create Features
 
@@ -75,6 +77,22 @@ python src/train_model.py
 
 This will:
 - Load the game features
-- Train a logistic regression model
+- Train a logistic regression model with StandardScaler
 - Evaluate performance
 - Save the model to `models/logistic_regression_model.pkl`
+
+## Optimize Model (Hyperparameter Tuning)
+
+Perform hyperparameter optimization to find the best model parameters:
+
+```bash
+python src/optimize_model.py
+```
+
+This will:
+- Perform randomized search with cross-validation
+- Test 50 random combinations of C, penalty, solver, and class_weight
+- Find the best hyperparameters
+- Save the optimized model to `models/logistic_regression_optimized.pkl`
+
+**Note:** This uses randomized search (faster than grid search) and tests 50 parameter combinations. Takes a few minutes to run.
