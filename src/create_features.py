@@ -22,6 +22,77 @@ try:
 except Exception as e:
     print(f"Note: Natural Stat Trick data not available: {e}")
 
+# Try to load Kaggle odds data (optional)
+ODDS_DATA = None
+ODDS_BY_TEAMS = None  # Lookup dictionary by (home_team, away_team) pairs
+_ODDS_LOOKUP_BUILT = False  # Flag to track if lookup has been built
+
+def normalize_team_name(name):
+    """Normalize team name for matching (remove accents, periods, etc.)."""
+    if name is None:
+        return None
+    import unicodedata
+    # Remove accents (Montréal -> Montreal)
+    name = unicodedata.normalize('NFD', str(name)).encode('ascii', 'ignore').decode('ascii')
+    # Remove periods (St. Louis -> St Louis)
+    name = name.replace('.', '')
+    # Lowercase and strip
+    return name.lower().strip()
+
+def _build_odds_lookup():
+    """Build a lookup dictionary by team pairs for efficient matching."""
+    global ODDS_BY_TEAMS, _ODDS_LOOKUP_BUILT
+    
+    if ODDS_DATA is None or len(ODDS_DATA) == 0:
+        ODDS_BY_TEAMS = {}
+        _ODDS_LOOKUP_BUILT = True
+        return {}
+    
+    lookup = {}
+    for idx, row in ODDS_DATA.iterrows():
+        try:
+            home_norm = normalize_team_name(row['home_team'])
+            away_norm = normalize_team_name(row['away_team'])
+            if home_norm is None or away_norm is None:
+                continue
+            key = (home_norm, away_norm)
+            
+            if key not in lookup:
+                lookup[key] = []
+            lookup[key].append({
+                'date': row['date'],
+                'home_moneyline': row.get('home_moneyline')
+            })
+        except Exception as e:
+            # Skip rows with errors
+            continue
+    
+    ODDS_BY_TEAMS = lookup
+    _ODDS_LOOKUP_BUILT = True
+    return lookup
+
+try:
+    odds_file = os.path.join('data', 'kaggle_odds.csv')
+    if os.path.exists(odds_file):
+        ODDS_DATA = pd.read_csv(odds_file)
+        ODDS_DATA['date'] = pd.to_datetime(ODDS_DATA['date']).dt.date
+        print(f"✓ Loaded Kaggle odds data: {len(ODDS_DATA)} records")
+        print(f"  Columns: {list(ODDS_DATA.columns)}")
+        _build_odds_lookup()
+        if ODDS_BY_TEAMS:
+            print(f"✓ Built odds lookup by team pairs: {len(ODDS_BY_TEAMS)} unique matchups")
+            # Show a sample of keys
+            sample_keys = list(ODDS_BY_TEAMS.keys())[:3]
+            print(f"  Sample matchups: {sample_keys}")
+        else:
+            print(f"⚠️  Warning: Odds lookup is empty!")
+    else:
+        print(f"Note: Kaggle odds file not found: {odds_file}")
+except Exception as e:
+    print(f"Note: Kaggle odds data not available: {e}")
+    import traceback
+    traceback.print_exc()
+
 
 def load_games(data_dir):
     """Load all games from JSON files."""
@@ -235,6 +306,8 @@ def calculate_nst_stats_up_to_date(team_name, date, min_games=5):
     return stats
 
 
+
+
 def match_team_name_to_nst(our_team_name):
     """
     Match our team name format to NST team name format.
@@ -248,27 +321,17 @@ def match_team_name_to_nst(our_team_name):
     if NST_DATA is None:
         return None
     
-    # Normalize team name (remove accents, periods, etc.)
-    def normalize_name(name):
-        # Remove accents (Montréal -> Montreal)
-        import unicodedata
-        name = unicodedata.normalize('NFD', name).encode('ascii', 'ignore').decode('ascii')
-        # Remove periods (St. Louis -> St Louis)
-        name = name.replace('.', '')
-        # Lowercase and strip
-        return name.lower().strip()
-    
-    our_normalized = normalize_name(our_team_name)
+    our_normalized = normalize_team_name(our_team_name)
     nst_teams = NST_DATA['team_name'].unique()
     
     # Try exact match (normalized)
     for nst_team in nst_teams:
-        if normalize_name(nst_team) == our_normalized:
+        if normalize_team_name(nst_team) == our_normalized:
             return nst_team
     
     # Try partial match (normalized)
     for nst_team in nst_teams:
-        nst_normalized = normalize_name(nst_team)
+        nst_normalized = normalize_team_name(nst_team)
         # Check if key words match
         our_words = set(our_normalized.split())
         nst_words = set(nst_normalized.split())
@@ -278,15 +341,79 @@ def match_team_name_to_nst(our_team_name):
     # Special cases for teams that don't exist in NST data
     # (e.g., Utah teams that relocated after NST data ends)
     if 'utah' in our_normalized:
-        # Utah teams are new (2024-25 season), NST data ends 2024-04-18
-        # Try to match to Arizona Coyotes (the team that relocated)
-        for nst_team in nst_teams:
-            if 'arizona' in normalize_name(nst_team) and 'coyotes' in normalize_name(nst_team):
-                # Don't match - Utah is a different team
-                pass
         return None
     
     return None
+
+
+def get_odds_for_game(game_id, game_date, home_team_name, away_team_name):
+    """
+    Get odds for a specific game from Kaggle data.
+    
+    Uses team-first matching: matches by (home_team, away_team) pair first,
+    then checks dates with ±1 day flexibility to handle date offset issues.
+    
+    Args:
+        game_id: Game ID (not used, kept for compatibility)
+        game_date: Game date (can be string, date, or datetime)
+        home_team_name: Home team name
+        away_team_name: Away team name
+    
+    Returns:
+        Dictionary with odds or None
+    
+    Note: The Kaggle data has:
+    - home_moneyline: Odds for the home team (not the favorite, just the home team)
+    - Some dates may be off by ±1 day, so we check both the exact date and date±1
+    """
+    if ODDS_BY_TEAMS is None or len(ODDS_BY_TEAMS) == 0:
+        return None
+    
+    # Convert date to date object
+    if isinstance(game_date, str):
+        game_date = pd.to_datetime(game_date).date()
+    elif isinstance(game_date, pd.Timestamp):
+        game_date = game_date.date()
+    
+    # Normalize team names for matching
+    home_normalized = normalize_team_name(home_team_name)
+    away_normalized = normalize_team_name(away_team_name)
+    
+    # Look up by team pair (this is the primary key)
+    team_key = (home_normalized, away_normalized)
+    
+    if team_key not in ODDS_BY_TEAMS:
+        return None
+    
+    # Get all games between these teams
+    candidate_games = ODDS_BY_TEAMS[team_key]
+    
+    # Find the best date match (check exact date, date-1, and date+1)
+    from datetime import timedelta
+    
+    best_match = None
+    best_date_diff = None
+    
+    for game in candidate_games:
+        odds_date = game['date']
+        
+        # Calculate date difference
+        date_diff = abs((game_date - odds_date).days)
+        
+        # Accept matches within ±1 day
+        if date_diff <= 1:
+            # Prefer exact date match, then date-1, then date+1
+            if best_match is None or date_diff < best_date_diff:
+                best_match = game
+                best_date_diff = date_diff
+    
+    if best_match is None:
+        return None
+    
+    # Return only home_moneyline (most informative for win/loss prediction)
+    return {
+        'home_moneyline': best_match.get('home_moneyline')  # Odds for home team
+    }
 
 
 def calculate_head_to_head(games_df, home_team_id, away_team_id, date, lookback_games=10):
@@ -488,6 +615,9 @@ def create_features(games_df):
         home_nst = calculate_nst_stats_up_to_date(home_nst_name, game_date) if home_nst_name else None
         away_nst = calculate_nst_stats_up_to_date(away_nst_name, game_date) if away_nst_name else None
         
+        # Get odds data
+        odds = get_odds_for_game(game['game_id'], game_date, game['home_team_name'], game['away_team_name'])
+        
         # Skip if we don't have enough data
         if not home_stats or not away_stats:
             continue
@@ -549,6 +679,9 @@ def create_features(games_df):
             'away_pdo_avg': away_nst['pdo_avg'] if away_nst and away_nst.get('pdo_avg') is not None else None,
             'xgf_pct_diff': (home_nst['xgf_pct_avg'] - away_nst['xgf_pct_avg']) if (home_nst and away_nst and home_nst.get('xgf_pct_avg') is not None and away_nst.get('xgf_pct_avg') is not None) else None,
             'cf_pct_diff': (home_nst['cf_pct_avg'] - away_nst['cf_pct_avg']) if (home_nst and away_nst and home_nst.get('cf_pct_avg') is not None and away_nst.get('cf_pct_avg') is not None) else None,
+            
+            # Odds features (if available)
+            'home_moneyline': odds['home_moneyline'] if odds and odds.get('home_moneyline') is not None else None,
             
             # Target variable
             'home_wins': game['home_wins'],
