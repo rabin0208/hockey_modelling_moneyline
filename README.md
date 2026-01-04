@@ -77,8 +77,8 @@ Natural Stat Trick provides advanced team-level metrics like Corsi and High Dang
 
 **How to download:**
 1. Navigate to [Natural Stat Trick](https://www.naturalstattrick.com/)
-2. Go to **"Teams"** → **"Summary"**
-3. Use the **"Export to CSV"** button at the bottom of the table
+2. Go to **"Games"** → **"All Teams"**
+3. Select the time period and use the **"Export to CSV"** button at the bottom of the table
 4. Save the file as `data/games.csv` (overwrite the existing file)
 
 **Process the NST data:**
