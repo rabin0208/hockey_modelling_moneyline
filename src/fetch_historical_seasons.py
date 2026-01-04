@@ -139,7 +139,24 @@ def main():
     all_season_games = []
     
     # Fetch each season using date-based method
-    for season_start, season_name in seasons:
+    # Skip previous seasons if file already exists (only process latest season)
+    for i, (season_start, season_name) in enumerate(seasons):
+        is_last_season = (i == 0)  # First season is the current/last season
+        
+        # Skip previous seasons if file already exists
+        if not is_last_season:
+            season_file = os.path.join(data_dir, f"games_{season_name}.json")
+            if os.path.exists(season_file):
+                print(f"\nSkipping {season_name} season (file already exists)")
+                try:
+                    with open(season_file, 'r') as f:
+                        existing_games = json.load(f)
+                    all_season_games.extend(existing_games)
+                    print(f"  Loaded {len(existing_games)} existing games")
+                    continue
+                except:
+                    pass  # If we can't read it, re-fetch
+        
         games = fetch_games_for_season(client, season_start, data_dir, season_name)
         all_season_games.extend(games)
     
