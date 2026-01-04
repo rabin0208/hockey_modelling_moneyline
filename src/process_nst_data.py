@@ -69,14 +69,44 @@ def load_nst_data(csv_file):
     df = pd.read_csv(csv_file)
     print(f"  Loaded {len(df)} rows")
     
+    # First pass: Build a lookup of Game -> [team1, team2] (full team names)
+    # Each game has exactly 2 rows, one for each team
+    print("  Building game-to-teams lookup...")
+    game_to_teams = {}
+    for idx, row in df.iterrows():
+        game_str = row['Game']
+        team = row['Team']
+        if pd.notna(game_str) and pd.notna(team):
+            if game_str not in game_to_teams:
+                game_to_teams[game_str] = []
+            if team not in game_to_teams[game_str]:
+                game_to_teams[game_str].append(team)
+    
     # Parse game strings
     print("  Parsing game dates and teams...")
     parsed_data = []
     for idx, row in df.iterrows():
-        date, team1, team2 = parse_game_string(row['Game'])
+        date, team1_partial, team2_partial = parse_game_string(row['Game'])
         if date:
             # Determine which team this row is for
             current_team = row['Team']
+            
+            # Find opponent: get both teams for this game, opponent is the other one
+            game_str = row['Game']
+            teams_in_game = game_to_teams.get(game_str, [])
+            if len(teams_in_game) == 2:
+                # Opponent is the other team in this game
+                opponent = teams_in_game[1] if current_team == teams_in_game[0] else teams_in_game[0]
+            else:
+                # Fallback: try to match partial names (shouldn't happen, but just in case)
+                opponent = None
+                if team1_partial and team2_partial:
+                    # Check if current team name contains team1_partial or team2_partial
+                    current_lower = current_team.lower()
+                    if team1_partial.lower() in current_lower:
+                        opponent = team2_partial  # Partial name fallback
+                    elif team2_partial.lower() in current_lower:
+                        opponent = team1_partial  # Partial name fallback
             
             # Helper function to safely convert to float
             def safe_float(value):
@@ -87,11 +117,11 @@ def load_nst_data(csv_file):
                 except (ValueError, TypeError):
                     return None
             
-            # Add both teams' data
+            # Add team's data
             parsed_data.append({
                 'date': date,
                 'team_name': current_team,
-                'opponent': team2 if current_team == team1 else team1,
+                'opponent': opponent,
                 'xGF': safe_float(row['xGF']),
                 'xGA': safe_float(row['xGA']),
                 'xGF%': safe_float(row['xGF%']),
