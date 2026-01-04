@@ -728,6 +728,11 @@ def main():
     # Create features
     features_df = create_features(games_df)
     
+    # Drop home_moneyline column
+    if 'home_moneyline' in features_df.columns:
+        features_df = features_df.drop(columns=['home_moneyline'])
+        print(f"\n✓ Dropped home_moneyline column")
+    
     # Save features
     output_file = os.path.join(data_dir, "game_features.csv")
     features_df.to_csv(output_file, index=False)
