@@ -67,6 +67,59 @@ This will create a CSV file with features for each game:
 
 Features include team win percentages, goal differentials, recent form, and more.
 
+## Update Data with Latest Information
+
+To update your dataset with today's games and latest statistics:
+
+### 1. Update Natural Stat Trick Data (Optional but Recommended)
+
+Natural Stat Trick provides advanced team-level metrics like Corsi and High Danger Chances.
+
+**How to download:**
+1. Navigate to [Natural Stat Trick](https://www.naturalstattrick.com/)
+2. Go to **"Teams"** → **"Summary"**
+3. Use the **"Export to CSV"** button at the bottom of the table
+4. Save the file as `data/games.csv` (overwrite the existing file)
+
+**Process the NST data:**
+```bash
+python src/process_nst_data.py
+```
+
+This will create `data/nst_processed.csv` with processed advanced statistics.
+
+### 2. Fetch New Games from NHL API
+
+Fetch the latest games from the NHL API:
+
+```bash
+python src/fetch_historical_seasons.py
+```
+
+This will fetch any new games and update `data/games_all_seasons.json`.
+
+### 3. Create Updated Features
+
+Process all games (including new ones) and create features:
+
+```bash
+python src/create_features.py
+```
+
+This will update `data/game_features.csv` with features for all games, including the newly fetched ones.
+
+### 4. Optional: Retrain Model
+
+If you want to include the new data in model training:
+
+```bash
+python src/train_model.py
+# or
+python src/optimize_model.py
+```
+
+**Note:** If you only want to make predictions for upcoming games, you can skip this step and use your existing trained model.
+
 ## Train Model
 
 Train a logistic regression model on the features:
