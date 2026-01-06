@@ -69,6 +69,7 @@ def train_random_forest(X_train, y_train, random_state=42, **kwargs):
         'min_samples_leaf': 15,  # Increased to require more samples per leaf
         'max_features': 'sqrt',  # Use sqrt of features (good default)
         'max_samples': 0.7,  # Use 70% of samples per tree (more regularization)
+        'class_weight': 'balanced',  # Account for class imbalance (53.86% home wins vs 46.14% away wins)
         'random_state': random_state,
         'n_jobs': -1,
         'verbose': 0

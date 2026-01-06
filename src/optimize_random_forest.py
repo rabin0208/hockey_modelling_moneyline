@@ -126,7 +126,7 @@ def optimize_hyperparameters(X, y, cv=5, random_state=42, n_iter=50):
     print("\n  This may take a few minutes...")
     
     # Create base model
-    base_model = RandomForestClassifier(
+    base_model = RandomForestClassifier(  # Account for class imbalance (53.86% home wins vs 46.14% away wins)
         random_state=random_state,
         n_jobs=-1,
         verbose=0

@@ -22,7 +22,9 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from create_features import (
     calculate_team_stats_up_to_date,
     calculate_recent_form,
-    calculate_head_to_head
+    calculate_head_to_head,
+    calculate_nst_stats_up_to_date,
+    match_team_name_to_nst
 )
 
 
@@ -310,6 +312,14 @@ def create_features_for_game(games_df, game, feature_columns):
     # Get head-to-head statistics
     h2h_stats = calculate_head_to_head(games_df, home_team_id, away_team_id, game_date)
     
+    # Get Natural Stat Trick advanced stats
+    home_nst_name = match_team_name_to_nst(home_team_name)
+    away_nst_name = match_team_name_to_nst(away_team_name)
+    home_nst = calculate_nst_stats_up_to_date(home_nst_name, game_date) if home_nst_name else None
+    away_nst = calculate_nst_stats_up_to_date(away_nst_name, game_date) if away_nst_name else None
+    
+    # Note: Odds features (home_moneyline) are not included because they were dropped before training
+    
     # Create feature vector (same format as training)
     features = {
         'home_win_pct': home_stats['win_pct'],
@@ -336,6 +346,25 @@ def create_features_for_game(games_df, game, feature_columns):
         'h2h_recent_home_win_pct': h2h_stats['h2h_recent_home_win_pct'] if h2h_stats else 0.5,
         'last_meeting_home_won': h2h_stats['last_meeting_home_won'] if h2h_stats else 0.5,
         'days_since_last_meeting': h2h_stats['days_since_last_meeting'] if h2h_stats else 999,
+        
+        # Natural Stat Trick advanced stats (if available)
+        # Use neutral defaults for missing values: 50% for percentages, 1.0 for PDO
+        # This matches the training data pattern where rows with NaN were dropped
+        'home_xgf_pct_avg': home_nst['xgf_pct_avg'] if home_nst and home_nst.get('xgf_pct_avg') is not None else 50.0,
+        'home_cf_pct_avg': home_nst['cf_pct_avg'] if home_nst and home_nst.get('cf_pct_avg') is not None else 50.0,
+        'home_hdcf_pct_avg': home_nst['hdcf_pct_avg'] if home_nst and home_nst.get('hdcf_pct_avg') is not None else 50.0,
+        'home_scf_pct_avg': home_nst['scf_pct_avg'] if home_nst and home_nst.get('scf_pct_avg') is not None else 50.0,
+        'home_pdo_avg': home_nst['pdo_avg'] if home_nst and home_nst.get('pdo_avg') is not None else 1.0,
+        'away_xgf_pct_avg': away_nst['xgf_pct_avg'] if away_nst and away_nst.get('xgf_pct_avg') is not None else 50.0,
+        'away_cf_pct_avg': away_nst['cf_pct_avg'] if away_nst and away_nst.get('cf_pct_avg') is not None else 50.0,
+        'away_hdcf_pct_avg': away_nst['hdcf_pct_avg'] if away_nst and away_nst.get('hdcf_pct_avg') is not None else 50.0,
+        'away_scf_pct_avg': away_nst['scf_pct_avg'] if away_nst and away_nst.get('scf_pct_avg') is not None else 50.0,
+        'away_pdo_avg': away_nst['pdo_avg'] if away_nst and away_nst.get('pdo_avg') is not None else 1.0,
+        'xgf_pct_diff': (home_nst['xgf_pct_avg'] - away_nst['xgf_pct_avg']) if (home_nst and away_nst and home_nst.get('xgf_pct_avg') is not None and away_nst.get('xgf_pct_avg') is not None) else 0.0,
+        'cf_pct_diff': (home_nst['cf_pct_avg'] - away_nst['cf_pct_avg']) if (home_nst and away_nst and home_nst.get('cf_pct_avg') is not None and away_nst.get('cf_pct_avg') is not None) else 0.0,
+        
+        # Note: home_moneyline is NOT included here because it was dropped before training
+        # The model was trained without odds features
     }
     
     # Create DataFrame with features in correct order
