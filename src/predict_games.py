@@ -24,7 +24,8 @@ from create_features import (
     calculate_recent_form,
     calculate_head_to_head,
     calculate_nst_stats_up_to_date,
-    match_team_name_to_nst
+    match_team_name_to_nst,
+    get_season_from_date
 )
 
 
@@ -249,6 +250,9 @@ def create_features_for_game(games_df, game, feature_columns):
         # If pd.isna fails, the date is probably valid
         pass
     
+    # Get the season from the game date (for season-only stats)
+    game_season = get_season_from_date(game_date)
+    
     # Ensure games_df date column is date type
     if games_df['date'].dtype != 'object' or isinstance(games_df['date'].iloc[0], str):
         games_df = games_df.copy()
@@ -264,15 +268,17 @@ def create_features_for_game(games_df, game, feature_columns):
         games_df['home_team_id'] = games_df['home_team_id'].astype('Int64')
         games_df['away_team_id'] = games_df['away_team_id'].astype('Int64')
     
-    # Debug: Check if team IDs exist in historical data
+    # Debug: Check if team IDs exist in historical data for this season
     home_games = games_df[
         ((games_df['home_team_id'] == home_team_id) | (games_df['away_team_id'] == home_team_id)) &
         (games_df['date'] < game_date) &
+        (games_df['season'] == game_season) &
         (games_df['home_wins'].notna())
     ]
     away_games = games_df[
         ((games_df['home_team_id'] == away_team_id) | (games_df['away_team_id'] == away_team_id)) &
         (games_df['date'] < game_date) &
+        (games_df['season'] == game_season) &
         (games_df['home_wins'].notna())
     ]
     
@@ -286,11 +292,11 @@ def create_features_for_game(games_df, game, feature_columns):
             print(f"    Debug: Home team ID {home_team_id} ({home_team_name}) not found in historical data at all")
             print(f"    Debug: Sample historical team IDs: {list(games_df['home_team_id'].unique()[:5])}")
         else:
-            print(f"    Debug: Home team ID {home_team_id} has {len(all_home_games)} total games, but 0 before {game_date}")
+            print(f"    Debug: Home team ID {home_team_id} has {len(all_home_games)} total games, but 0 in season {game_season} before {game_date}")
     
-    # Get team stats up to this date
-    home_stats = calculate_team_stats_up_to_date(games_df, home_team_id, game_date)
-    away_stats = calculate_team_stats_up_to_date(games_df, away_team_id, game_date)
+    # Get team stats up to this date (current season only)
+    home_stats = calculate_team_stats_up_to_date(games_df, home_team_id, game_date, season=game_season)
+    away_stats = calculate_team_stats_up_to_date(games_df, away_team_id, game_date, season=game_season)
     
     # Skip if we don't have enough data
     if not home_stats or not away_stats:
@@ -309,62 +315,56 @@ def create_features_for_game(games_df, game, feature_columns):
     home_recent = calculate_recent_form(games_df, home_team_id, game_date)
     away_recent = calculate_recent_form(games_df, away_team_id, game_date)
     
-    # Get head-to-head statistics
+    # Get head-to-head statistics (cross-season, as matchup history persists)
     h2h_stats = calculate_head_to_head(games_df, home_team_id, away_team_id, game_date)
     
-    # Get Natural Stat Trick advanced stats
+    # Get Natural Stat Trick advanced stats (current season only)
     home_nst_name = match_team_name_to_nst(home_team_name)
     away_nst_name = match_team_name_to_nst(away_team_name)
-    home_nst = calculate_nst_stats_up_to_date(home_nst_name, game_date) if home_nst_name else None
-    away_nst = calculate_nst_stats_up_to_date(away_nst_name, game_date) if away_nst_name else None
-    
-    # Note: Odds features (home_moneyline) are not included because they were dropped before training
+    home_nst = calculate_nst_stats_up_to_date(home_nst_name, game_date, season=game_season) if home_nst_name else None
+    away_nst = calculate_nst_stats_up_to_date(away_nst_name, game_date, season=game_season) if away_nst_name else None
     
     # Create feature vector (same format as training)
+    # NOTE: Reduced feature set - redundant features removed:
+    # - home_games_played, away_games_played (just sample size)
+    # - win_pct_diff, goal_differential_diff (derived)
+    # - h2h_games, days_since_last_meeting, h2h_recent_home_win_pct (weak predictors)
+    # - hdcf_pct, scf_pct (correlated with xgf_pct)
+    # - xgf_pct_diff, cf_pct_diff (derived)
     features = {
+        # Home team features (current season stats)
         'home_win_pct': home_stats['win_pct'],
         'home_goals_for_avg': home_stats['goals_for_avg'],
         'home_goals_against_avg': home_stats['goals_against_avg'],
         'home_goal_differential_avg': home_stats['goal_differential_avg'],
         'home_home_win_pct': home_stats['home_win_pct'],
-        'home_games_played': home_stats['games_played'],
+        
+        # Away team features (current season stats)
         'away_win_pct': away_stats['win_pct'],
         'away_goals_for_avg': away_stats['goals_for_avg'],
         'away_goals_against_avg': away_stats['goals_against_avg'],
         'away_goal_differential_avg': away_stats['goal_differential_avg'],
         'away_away_win_pct': away_stats['away_win_pct'],
-        'away_games_played': away_stats['games_played'],
+        
+        # Recent form (last 10 games)
         'home_recent_win_pct': home_recent['recent_win_pct'] if home_recent else 0.5,
         'home_recent_goal_differential': home_recent['recent_goal_differential_avg'] if home_recent else 0,
         'away_recent_win_pct': away_recent['recent_win_pct'] if away_recent else 0.5,
         'away_recent_goal_differential': away_recent['recent_goal_differential_avg'] if away_recent else 0,
-        'win_pct_diff': home_stats['win_pct'] - away_stats['win_pct'],
-        'goal_differential_diff': home_stats['goal_differential_avg'] - away_stats['goal_differential_avg'],
-        'h2h_games': h2h_stats['h2h_games'] if h2h_stats else 0,
+        
+        # Head-to-head features (cross-season)
         'h2h_home_win_pct': h2h_stats['h2h_home_team_win_pct'] if h2h_stats else 0.5,
         'h2h_goal_differential': h2h_stats['h2h_goal_differential'] if h2h_stats else 0,
-        'h2h_recent_home_win_pct': h2h_stats['h2h_recent_home_win_pct'] if h2h_stats else 0.5,
         'last_meeting_home_won': h2h_stats['last_meeting_home_won'] if h2h_stats else 0.5,
-        'days_since_last_meeting': h2h_stats['days_since_last_meeting'] if h2h_stats else 999,
         
-        # Natural Stat Trick advanced stats (if available)
+        # Natural Stat Trick advanced stats (current season)
         # Use neutral defaults for missing values: 50% for percentages, 1.0 for PDO
-        # This matches the training data pattern where rows with NaN were dropped
         'home_xgf_pct_avg': home_nst['xgf_pct_avg'] if home_nst and home_nst.get('xgf_pct_avg') is not None else 50.0,
         'home_cf_pct_avg': home_nst['cf_pct_avg'] if home_nst and home_nst.get('cf_pct_avg') is not None else 50.0,
-        'home_hdcf_pct_avg': home_nst['hdcf_pct_avg'] if home_nst and home_nst.get('hdcf_pct_avg') is not None else 50.0,
-        'home_scf_pct_avg': home_nst['scf_pct_avg'] if home_nst and home_nst.get('scf_pct_avg') is not None else 50.0,
-        'home_pdo_avg': home_nst['pdo_avg'] if home_nst and home_nst.get('pdo_avg') is not None else 1.0,
+        'home_pdo_avg': home_nst['pdo_avg'] if home_nst and home_nst.get('pdo_avg') is not None else 100.0,
         'away_xgf_pct_avg': away_nst['xgf_pct_avg'] if away_nst and away_nst.get('xgf_pct_avg') is not None else 50.0,
         'away_cf_pct_avg': away_nst['cf_pct_avg'] if away_nst and away_nst.get('cf_pct_avg') is not None else 50.0,
-        'away_hdcf_pct_avg': away_nst['hdcf_pct_avg'] if away_nst and away_nst.get('hdcf_pct_avg') is not None else 50.0,
-        'away_scf_pct_avg': away_nst['scf_pct_avg'] if away_nst and away_nst.get('scf_pct_avg') is not None else 50.0,
-        'away_pdo_avg': away_nst['pdo_avg'] if away_nst and away_nst.get('pdo_avg') is not None else 1.0,
-        'xgf_pct_diff': (home_nst['xgf_pct_avg'] - away_nst['xgf_pct_avg']) if (home_nst and away_nst and home_nst.get('xgf_pct_avg') is not None and away_nst.get('xgf_pct_avg') is not None) else 0.0,
-        'cf_pct_diff': (home_nst['cf_pct_avg'] - away_nst['cf_pct_avg']) if (home_nst and away_nst and home_nst.get('cf_pct_avg') is not None and away_nst.get('cf_pct_avg') is not None) else 0.0,
-        
-        # Note: home_moneyline is NOT included here because it was dropped before training
-        # The model was trained without odds features
+        'away_pdo_avg': away_nst['pdo_avg'] if away_nst and away_nst.get('pdo_avg') is not None else 100.0,
     }
     
     # Create DataFrame with features in correct order
