@@ -116,6 +116,14 @@ If you want to include the new data in model training:
 python src/train_model.py
 # or
 python src/optimize_model.py
+# or
+python src/train_random_forest.py
+# or
+python src/optimize_random_forest.py
+# or
+python src/train_gradient_boosting.py
+# or
+python src/optimize_gradient_boosting.py
 ```
 
 **Note:** If you only want to make predictions for upcoming games, you can skip this step and use your existing trained model.
@@ -182,6 +190,37 @@ This will:
 
 **Note:** This uses randomized search and tests 50 parameter combinations. Takes several minutes to run.
 
+## Train Gradient Boosting Model
+
+Train a Histogram-based Gradient Boosting classifier (often performs better than Random Forest):
+
+```bash
+python src/train_gradient_boosting.py
+```
+
+This will:
+- Train a Gradient Boosting model with default hyperparameters
+- Evaluate performance on test set
+- Save the model to `models/gradient_boosting_model.pkl`
+
+**Note:** Gradient Boosting uses boosting (sequential tree building) instead of bagging, and often achieves better accuracy than Random Forest on tabular data.
+
+## Optimize Gradient Boosting Model
+
+Perform hyperparameter optimization for the Gradient Boosting model:
+
+```bash
+python src/optimize_gradient_boosting.py
+```
+
+This will:
+- Perform randomized search with cross-validation
+- Test 50 random combinations of hyperparameters (max_iter, max_depth, learning_rate, l2_regularization, etc.)
+- Find the best hyperparameters that reduce overfitting
+- Save the optimized model to `models/gradient_boosting_optimized.pkl`
+
+**Note:** This uses randomized search and tests 50 parameter combinations. Takes several minutes to run.
+
 ## Predict Upcoming Games
 
 Predict outcomes for upcoming games using a trained model:
@@ -208,7 +247,9 @@ This will:
   - Confidence level
 
 **Available models:**
-- `models/random_forest_optimized.pkl` (default, best accuracy)
+- `models/gradient_boosting_optimized.pkl`
+- `models/random_forest_optimized.pkl` (default)
+- `models/gradient_boosting_model.pkl`
 - `models/logistic_regression_optimized.pkl`
 - `models/random_forest_model.pkl`
 - `models/logistic_regression_model.pkl`
