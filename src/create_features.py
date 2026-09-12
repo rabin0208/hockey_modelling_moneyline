@@ -669,6 +669,40 @@ def calculate_recent_form(games_df, team_id, date, lookback_games=10):
     }
 
 
+def get_rest_days(games_df, team_id, game_date, max_rest_days=7):
+    """
+    Days since the team's last game (before game_date).
+    Used for back-to-back and rest-advantage features.
+
+    Args:
+        games_df: DataFrame with all games (must have date, home_team_id, away_team_id, home_wins)
+        team_id: Team ID
+        game_date: Current game date (datetime or Timestamp)
+        max_rest_days: Cap when team has no previous game (e.g. season opener). Treated as "fully rested".
+
+    Returns:
+        int: Number of days since last game, or max_rest_days if no previous game.
+    """
+    team_games = games_df[
+        (games_df['date'] < game_date) &
+        ((games_df['home_team_id'] == team_id) | (games_df['away_team_id'] == team_id)) &
+        (games_df['home_wins'].notna())
+    ]
+    if len(team_games) == 0:
+        return max_rest_days
+    last_date = team_games['date'].max()
+    # Normalize to date for subtraction (works with Timestamp or date)
+    d = getattr(game_date, 'date', None)
+    game_d = d() if callable(d) else game_date
+    ld = getattr(last_date, 'date', None)
+    last_d = ld() if callable(ld) else last_date
+    delta = game_d - last_d
+    delta_days = int(delta.days) if hasattr(delta, 'days') else max_rest_days
+    if delta_days < 0:
+        return max_rest_days
+    return min(delta_days, max_rest_days)
+
+
 def create_features(games_df):
     """
     Create features for each game based on team performance up to that date.
@@ -707,6 +741,10 @@ def create_features(games_df):
         
         # Get head-to-head statistics (cross-season, as matchup history persists)
         h2h_stats = calculate_head_to_head(games_df, home_team_id, away_team_id, game_date)
+        
+        # Rest days (days since each team's last game; back-to-back = 0)
+        home_rest_days = get_rest_days(games_df, home_team_id, game_date)
+        away_rest_days = get_rest_days(games_df, away_team_id, game_date)
         
         # Get Natural Stat Trick advanced stats (current season only)
         home_nst_name = match_team_name_to_nst(game['home_team_name'])
@@ -761,6 +799,10 @@ def create_features(games_df):
             'h2h_home_win_pct': h2h_stats['h2h_home_team_win_pct'] if h2h_stats else 0.5,
             'h2h_goal_differential': h2h_stats['h2h_goal_differential'] if h2h_stats else 0,
             'last_meeting_home_won': h2h_stats['last_meeting_home_won'] if h2h_stats else 0.5,
+            
+            # Rest days (0 = back-to-back; higher = more rest; capped at max_rest_days for season openers)
+            'home_rest_days': home_rest_days,
+            'away_rest_days': away_rest_days,
             
             # Natural Stat Trick advanced stats (current season, if available)
             # Keeping xGF% (best predictor), CF% (possession), and PDO (luck indicator)

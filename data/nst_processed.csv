@@ -12235,9 +12235,63 @@ date,team_name,opponent,xGF,xGA,xGF%,CF%,FF%,SF%,HDCF%,SCF%,PDO
 2026-01-31,Minnesota Wild,Edmonton Oilers,4.13,4.93,45.59,41.61,40.0,40.32,51.22,51.28,1.119
 2026-01-31,Seattle Kraken,Vegas Golden Knights,1.8,2.01,47.24,47.62,48.39,45.24,38.46,50.0,1.062
 2026-01-31,Vegas Golden Knights,Seattle Kraken,2.01,1.8,52.76,52.38,51.61,54.76,61.54,50.0,0.938
-2026-02-01,Boston Bruins,Tampa Bay Lightning,2.58,1.47,63.72,48.31,50.0,53.06,69.23,58.97,1.067
-2026-02-01,Tampa Bay Lightning,Boston Bruins,1.47,2.58,36.28,51.69,50.0,46.94,30.77,41.03,0.933
-2026-02-01,Carolina Hurricanes,Los Angeles Kings,2.07,1.27,61.93,61.54,60.34,64.71,75.0,68.42,0.879
-2026-02-01,Los Angeles Kings,Carolina Hurricanes,1.27,2.07,38.07,38.46,39.66,35.29,25.0,31.58,1.121
-2026-02-01,Anaheim Ducks,Vegas Golden Knights,1.66,2.57,39.21,45.36,46.58,39.13,30.77,47.06,1.04
-2026-02-01,Vegas Golden Knights,Anaheim Ducks,2.57,1.66,60.79,54.64,53.42,60.87,69.23,52.94,0.96
+2026-02-01,Boston Bruins,Tampa Bay Lightning,2.58,1.49,63.35,47.78,49.25,53.06,69.23,58.97,1.067
+2026-02-01,Tampa Bay Lightning,Boston Bruins,1.49,2.58,36.65,52.22,50.75,46.94,30.77,41.03,0.933
+2026-02-01,Carolina Hurricanes,Los Angeles Kings,2.2,1.27,63.33,61.96,61.02,64.71,76.92,69.23,0.879
+2026-02-01,Los Angeles Kings,Carolina Hurricanes,1.27,2.2,36.67,38.04,38.98,35.29,23.08,30.77,1.121
+2026-02-01,Anaheim Ducks,Vegas Golden Knights,1.66,2.93,36.11,44.9,45.95,38.3,28.57,45.71,1.042
+2026-02-01,Vegas Golden Knights,Anaheim Ducks,2.93,1.66,63.89,55.1,54.05,61.7,71.43,54.29,0.958
+2026-02-02,Buffalo Sabres,Florida Panthers,2.18,2.43,47.24,38.46,38.81,34.15,47.37,36.36,1.212
+2026-02-02,Florida Panthers,Buffalo Sabres,2.43,2.18,52.76,61.54,61.19,65.85,52.63,63.64,0.788
+2026-02-02,Ottawa Senators,Pittsburgh Penguins,2.61,1.89,58.08,64.0,62.96,65.79,62.5,65.91,0.966
+2026-02-02,Pittsburgh Penguins,Ottawa Senators,1.89,2.61,41.92,36.0,37.04,34.21,37.5,34.09,1.034
+2026-02-02,New York Islanders,Washington Capitals,2.87,2.06,58.24,60.87,57.38,53.66,55.0,55.32,0.888
+2026-02-02,Washington Capitals,New York Islanders,2.06,2.87,41.76,39.13,42.62,46.34,45.0,44.68,1.112
+2026-02-02,Minnesota Wild,Montreal Canadiens,2.06,1.29,61.46,58.59,62.86,55.26,53.33,56.1,0.966
+2026-02-02,Montreal Canadiens,Minnesota Wild,1.29,2.06,38.54,41.41,37.14,44.74,46.67,43.9,1.034
+2026-02-02,Nashville Predators,St Louis Blues,3.09,2.72,53.21,51.82,51.72,45.61,56.0,48.33,1.063
+2026-02-02,St Louis Blues,Nashville Predators,2.72,3.09,46.79,48.18,48.28,54.39,44.0,51.67,0.937
+2026-02-02,Chicago Blackhawks,San Jose Sharks,1.37,2.08,39.68,39.39,38.89,36.36,50.0,37.14,1.274
+2026-02-02,San Jose Sharks,Chicago Blackhawks,2.08,1.37,60.32,60.61,61.11,63.64,50.0,62.86,0.726
+2026-02-02,Dallas Stars,Winnipeg Jets,3.04,1.48,67.22,51.76,59.68,52.27,69.23,58.54,1.039
+2026-02-02,Winnipeg Jets,Dallas Stars,1.48,3.04,32.78,48.24,40.32,47.73,30.77,41.46,0.961
+2026-02-02,Colorado Avalanche,Detroit Red Wings,1.79,2.52,41.53,52.22,49.21,45.95,36.84,50.0,0.95
+2026-02-02,Detroit Red Wings,Colorado Avalanche,2.52,1.79,58.47,47.78,50.79,54.05,63.16,50.0,1.05
+2026-02-02,Utah Mammoth,Vancouver Canucks,1.97,1.6,55.25,51.25,50.0,43.24,63.64,48.72,1.217
+2026-02-02,Vancouver Canucks,Utah Mammoth,1.6,1.97,44.75,48.75,50.0,56.76,36.36,51.28,0.783
+2026-02-02,Calgary Flames,Toronto Maple Leafs,2.23,1.42,61.01,58.93,59.15,64.44,78.95,56.0,0.944
+2026-02-02,Toronto Maple Leafs,Calgary Flames,1.42,2.23,38.99,41.07,40.85,35.56,21.05,44.0,1.056
+2026-02-03,Buffalo Sabres,Tampa Bay Lightning,0.98,2.96,24.83,38.67,37.93,35.14,28.57,29.41,1.112
+2026-02-03,Tampa Bay Lightning,Buffalo Sabres,2.96,0.98,75.17,61.33,62.07,64.86,71.43,70.59,0.888
+2026-02-03,Columbus Blue Jackets,New Jersey Devils,1.6,1.23,56.49,50.63,52.63,56.41,63.64,48.48,1.091
+2026-02-03,New Jersey Devils,Columbus Blue Jackets,1.23,1.6,43.51,49.37,47.37,43.59,36.36,51.52,0.909
+2026-02-03,New York Islanders,Pittsburgh Penguins,1.83,3.3,35.65,41.67,39.19,39.22,42.11,33.33,1.021
+2026-02-03,Pittsburgh Penguins,New York Islanders,3.3,1.83,64.35,58.33,60.81,60.78,57.89,66.67,0.979
+2026-02-03,Philadelphia Flyers,Washington Capitals,2.01,1.92,51.1,43.02,49.12,48.65,52.63,48.72,1.058
+2026-02-03,Washington Capitals,Philadelphia Flyers,1.92,2.01,48.9,56.98,50.88,51.35,47.37,51.28,0.942
+2026-02-03,Carolina Hurricanes,Ottawa Senators,2.28,4.1,35.71,48.96,42.65,43.24,39.29,39.62,1.14
+2026-02-03,Ottawa Senators,Carolina Hurricanes,4.1,2.28,64.29,51.04,57.35,56.76,60.71,60.38,0.86
+2026-02-03,Edmonton Oilers,Toronto Maple Leafs,2.69,2.41,52.7,62.38,58.44,61.4,55.56,55.1,0.966
+2026-02-03,Toronto Maple Leafs,Edmonton Oilers,2.41,2.69,47.3,37.62,41.56,38.6,44.44,44.9,1.034
+2026-02-03,Anaheim Ducks,Seattle Kraken,2.61,1.94,57.3,57.55,56.76,55.32,63.16,58.7,1.068
+2026-02-03,Seattle Kraken,Anaheim Ducks,1.94,2.61,42.7,42.45,43.24,44.68,36.84,41.3,0.932
+2026-02-04,Boston Bruins,Florida Panthers,1.62,1.84,46.89,51.28,50.98,58.06,44.44,42.86,1.09
+2026-02-04,Florida Panthers,Boston Bruins,1.84,1.62,53.11,48.72,49.02,41.94,55.56,57.14,0.91
+2026-02-04,Columbus Blue Jackets,Chicago Blackhawks,2.33,1.18,66.41,53.66,50.85,60.0,61.54,58.33,1.167
+2026-02-04,Chicago Blackhawks,Columbus Blue Jackets,1.18,2.33,33.59,46.34,49.15,40.0,38.46,41.67,0.833
+2026-02-04,Montreal Canadiens,Winnipeg Jets,2.56,3.99,39.07,45.92,39.73,44.68,45.45,44.23,1.143
+2026-02-04,Winnipeg Jets,Montreal Canadiens,3.99,2.56,60.93,54.08,60.27,55.32,54.55,55.77,0.857
+2026-02-04,Minnesota Wild,Nashville Predators,4.21,2.11,66.61,57.26,57.45,58.57,67.74,53.97,0.994
+2026-02-04,Nashville Predators,Minnesota Wild,2.11,4.21,33.39,42.74,42.55,41.43,32.26,46.03,1.006
+2026-02-04,Colorado Avalanche,San Jose Sharks,3.36,2.08,61.76,65.0,60.53,60.0,52.63,67.31,0.97
+2026-02-04,San Jose Sharks,Colorado Avalanche,2.08,3.36,38.24,35.0,39.47,40.0,47.37,32.69,1.03
+2026-02-04,Detroit Red Wings,Utah Mammoth,1.73,1.97,46.72,58.54,57.81,55.0,43.75,48.78,0.889
+2026-02-04,Utah Mammoth,Detroit Red Wings,1.97,1.73,53.28,41.46,42.19,45.0,56.25,51.22,1.111
+2026-02-04,Dallas Stars,St Louis Blues,3.12,1.41,68.86,52.86,55.32,57.58,75.0,56.76,0.996
+2026-02-04,St Louis Blues,Dallas Stars,1.41,3.12,31.14,47.14,44.68,42.42,25.0,43.24,1.004
+2026-02-04,Calgary Flames,Edmonton Oilers,2.91,2.0,59.25,55.32,55.88,42.22,52.0,53.57,1.067
+2026-02-04,Edmonton Oilers,Calgary Flames,2.0,2.91,40.75,44.68,44.12,57.78,48.0,46.43,0.933
+2026-02-04,Vancouver Canucks,Vegas Golden Knights,1.59,2.52,38.74,44.94,43.66,43.75,31.58,43.9,0.91
+2026-02-04,Vegas Golden Knights,Vancouver Canucks,2.52,1.59,61.26,55.06,56.34,56.25,68.42,56.1,1.09
+2026-02-04,Los Angeles Kings,Seattle Kraken,1.54,1.0,60.64,55.13,62.0,57.14,58.33,58.97,0.833
+2026-02-04,Seattle Kraken,Los Angeles Kings,1.0,1.54,39.36,44.87,38.0,42.86,41.67,41.03,1.167

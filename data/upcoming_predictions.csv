@@ -1,0 +1,8 @@
+date,away_team,home_team,prediction,predicted_winner,confidence,home_win_prob,away_win_prob,home_odds,away_odds
+2026-09-19,Dallas Stars,St. Louis Blues,Away Win,Dallas Stars,0.5556,0.4444,0.5556,125.0,80.0
+2026-09-19,Montréal Canadiens,Toronto Maple Leafs,Away Win,Montréal Canadiens,0.5122,0.4878,0.5122,105.0,95.2
+2026-09-19,Toronto Maple Leafs,Montréal Canadiens,Home Win,Montréal Canadiens,0.5472,0.5472,0.4528,82.7,120.9
+2026-09-19,Winnipeg Jets,Edmonton Oilers,Home Win,Edmonton Oilers,0.5721,0.5721,0.4279,74.8,133.7
+2026-09-19,Chicago Blackhawks,Minnesota Wild,Home Win,Minnesota Wild,0.6271,0.6271,0.3729,59.5,168.2
+2026-09-19,Vegas Golden Knights,Los Angeles Kings,Home Win,Los Angeles Kings,0.5067,0.5067,0.4933,97.4,102.7
+2026-09-19,Vancouver Canucks,Seattle Kraken,Home Win,Seattle Kraken,0.5478,0.5478,0.4522,82.6,121.1

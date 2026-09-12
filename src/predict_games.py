@@ -25,7 +25,8 @@ from create_features import (
     calculate_head_to_head,
     calculate_nst_stats_up_to_date,
     match_team_name_to_nst,
-    get_season_from_date
+    get_season_from_date,
+    get_rest_days
 )
 
 
@@ -318,6 +319,11 @@ def create_features_for_game(games_df, game, feature_columns):
     # Get head-to-head statistics (cross-season, as matchup history persists)
     h2h_stats = calculate_head_to_head(games_df, home_team_id, away_team_id, game_date)
     
+    # Rest days (days since each team's last game)
+    # For get_rest_days we need dates comparable with game_date; use games_df as-is (handles Timestamp or date)
+    home_rest_days = get_rest_days(games_df, home_team_id, game_date)
+    away_rest_days = get_rest_days(games_df, away_team_id, game_date)
+    
     # Get Natural Stat Trick advanced stats (current season only)
     home_nst_name = match_team_name_to_nst(home_team_name)
     away_nst_name = match_team_name_to_nst(away_team_name)
@@ -356,6 +362,10 @@ def create_features_for_game(games_df, game, feature_columns):
         'h2h_home_win_pct': h2h_stats['h2h_home_team_win_pct'] if h2h_stats else 0.5,
         'h2h_goal_differential': h2h_stats['h2h_goal_differential'] if h2h_stats else 0,
         'last_meeting_home_won': h2h_stats['last_meeting_home_won'] if h2h_stats else 0.5,
+        
+        # Rest days (0 = back-to-back; higher = more rest)
+        'home_rest_days': home_rest_days,
+        'away_rest_days': away_rest_days,
         
         # Natural Stat Trick advanced stats (current season)
         # Use neutral defaults for missing values: 50% for percentages, 1.0 for PDO
@@ -523,6 +533,33 @@ def display_predictions(predictions):
     print("\n" + "=" * 80)
 
 
+def save_predictions_csv(predictions, output_path):
+    """Save predictions to a CSV file."""
+    if not predictions:
+        print(f"\nNo predictions to save to {output_path}")
+        return
+
+    rows = []
+    for pred in sorted(predictions, key=lambda x: x['date']):
+        predicted_winner = pred['home_team'] if pred['prediction'] == 'Home Win' else pred['away_team']
+        rows.append({
+            'date': pred['date'].isoformat() if hasattr(pred['date'], 'isoformat') else pred['date'],
+            'away_team': pred['away_team'],
+            'home_team': pred['home_team'],
+            'prediction': pred['prediction'],
+            'predicted_winner': predicted_winner,
+            'confidence': round(pred['confidence'], 4),
+            'home_win_prob': round(pred['home_win_prob'], 4),
+            'away_win_prob': round(pred['away_win_prob'], 4),
+            'home_odds': round(pred['home_odds'], 1) if pred['home_odds'] != float('inf') else '',
+            'away_odds': round(pred['away_odds'], 1) if pred['away_odds'] != float('inf') else '',
+        })
+
+    os.makedirs(os.path.dirname(os.path.abspath(output_path)) or '.', exist_ok=True)
+    pd.DataFrame(rows).to_csv(output_path, index=False)
+    print(f"\n✓ Saved {len(rows)} predictions to {output_path}")
+
+
 def main():
     """Main function to predict upcoming games."""
     import argparse
@@ -539,6 +576,12 @@ def main():
         type=int,
         default=7,
         help='Number of days ahead to fetch games (default: 7)'
+    )
+    parser.add_argument(
+        '--output',
+        type=str,
+        default=None,
+        help='Optional path to save predictions as CSV'
     )
     
     args = parser.parse_args()
@@ -587,6 +630,9 @@ def main():
     
     # Display results
     display_predictions(predictions)
+
+    if args.output:
+        save_predictions_csv(predictions, args.output)
     
     print("\n✓ Predictions complete!")
 
