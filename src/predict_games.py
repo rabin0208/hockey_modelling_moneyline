@@ -97,20 +97,14 @@ def fetch_upcoming_games(client, days_ahead=7):
                 # Ensure game has a date - use the date_str we're iterating with
                 if 'gameDate' not in game or not game.get('gameDate'):
                     game['gameDate'] = date_str
-                
-                # Get game status - try multiple ways
-                game_status = game.get('status', {})
-                if not game_status:
-                    # Sometimes status is at top level
-                    abstract_state = game.get('abstractGameState', '')
-                    detailed_state = game.get('detailedState', '')
-                else:
-                    abstract_state = game_status.get('abstractGameState', '')
-                    detailed_state = game_status.get('detailedState', '')
-                
-                # Get games that are scheduled/preview (not finished)
-                # Be more lenient - include any game that's not 'Final' or 'Live'
-                if abstract_state not in ['Final', 'Live', 'Official']:
+
+                game_state = str(game.get('gameState') or '').upper()
+                if game_state in {'OFF', 'FINAL', 'LIVE', 'CRIT', 'OVER'}:
+                    continue
+
+                game_status = game.get('status') or {}
+                abstract_state = game_status.get('abstractGameState') or game.get('abstractGameState', '')
+                if game_state in {'FUT', 'PRE'} or abstract_state not in {'Final', 'Live', 'Official'}:
                     all_games.append(game)
         except Exception as e:
             print(f"  Warning: Could not fetch games for {current_date}: {e}")
@@ -126,7 +120,7 @@ def fetch_upcoming_games(client, days_ahead=7):
 def parse_game_data(game):
     """Parse game data from NHL API format."""
     try:
-        game_id = game.get('gamePk')
+        game_id = game.get('id') or game.get('gamePk')
         game_date = game.get('gameDate', '')
         
         # Parse date - handle multiple formats
@@ -216,7 +210,8 @@ def parse_game_data(game):
             'home_wins': None,  # Not yet played
             'home_score': None,
             'away_score': None,
-            'season': f"{game_date.year}_{game_date.year+1}" if game_date.month >= 10 else f"{game_date.year-1}_{game_date.year}"
+            'season': f"{game_date.year}_{game_date.year+1}" if game_date.month >= 10 else f"{game_date.year-1}_{game_date.year}",
+            'start_time': game.get('startTimeUTC') or '',
         }
     except Exception as e:
         print(f"  Warning: Could not parse game {game.get('gamePk', 'unknown')}: {e}")

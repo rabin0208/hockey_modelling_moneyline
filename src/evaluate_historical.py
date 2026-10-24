@@ -30,6 +30,7 @@ SEASON_LABELS = {
     20232024: '2023-24',
     20242025: '2024-25',
     20252026: '2025-26',
+    20262027: '2026-27',
 }
 
 
@@ -207,6 +208,7 @@ def main():
 
     seasons = sorted(df['season'].unique())
     rows = []
+    game_rows = []
     held_out_true = []
     held_out_pred = []
     held_out_proba = []
@@ -229,11 +231,35 @@ def main():
 
         model = make_model()
         model.fit(train_df[feature_cols], train_df['home_wins'].astype(int))
-        held_out_true.append(test_df['home_wins'].astype(int).to_numpy())
-        held_out_pred.append(model.predict(test_df[feature_cols]))
-        held_out_proba.append(model.predict_proba(test_df[feature_cols])[:, 1])
-        held_out_odds_valid.append(test_df['odds_valid'].to_numpy())
-        held_out_ml.append(test_df['home_moneyline'].to_numpy())
+        y_true = test_df['home_wins'].astype(int).to_numpy()
+        pred = model.predict(test_df[feature_cols])
+        proba = model.predict_proba(test_df[feature_cols])[:, 1]
+        odds_valid = test_df['odds_valid'].to_numpy()
+        home_ml = test_df['home_moneyline'].to_numpy()
+        held_out_true.append(y_true)
+        held_out_pred.append(pred)
+        held_out_proba.append(proba)
+        held_out_odds_valid.append(odds_valid)
+        held_out_ml.append(home_ml)
+        for actual, pick, p_home, valid, ml in zip(y_true, pred, proba, odds_valid, home_ml):
+            edge = np.nan
+            profit = np.nan
+            if valid and pd.notna(ml):
+                implied_home = american_to_implied(ml)
+                bet_home = bool(pick)
+                odds = ml if bet_home else implied_to_american(1.0 - implied_home)
+                won = (actual == 1) if bet_home else (actual == 0)
+                edge = (p_home - implied_home) if bet_home else (implied_home - p_home)
+                profit = profit_from_american(odds) if won else -1.0
+            game_rows.append({
+                'season': label,
+                'home_win': int(actual),
+                'pick_home': int(pick),
+                'p_home': float(p_home),
+                'odds_valid': bool(valid),
+                'edge': edge,
+                'profit': profit,
+            })
 
     y_all = np.concatenate(held_out_true)
     pred_all = np.concatenate(held_out_pred)
@@ -277,9 +303,12 @@ def main():
 
     output_path = 'data/historical_accuracy_roi.csv'
     export.to_csv(output_path, index=False)
+    games_path = 'data/historical_bet_games.csv'
+    pd.DataFrame(game_rows).to_csv(games_path, index=False)
     print("\n" + "=" * 72)
     print(export.to_string(index=False))
     print(f"\n✓ Saved {output_path}")
+    print(f"✓ Saved {games_path}")
 
 
 if __name__ == '__main__':
