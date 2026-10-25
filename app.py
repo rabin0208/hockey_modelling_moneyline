@@ -450,27 +450,53 @@ def render_slate(target: date, recommendations_only: bool, edge_threshold: float
                 )
 
 
-def season_roi(games: pd.DataFrame, threshold: float) -> pd.DataFrame:
+def as_bool(series: pd.Series) -> pd.Series:
+    if series.dtype == bool:
+        return series.fillna(False)
+    return series.astype(str).str.lower().isin(["true", "1"])
+
+
+def market_columns(market: str) -> tuple[str, str, str]:
+    if market == "open":
+        return "open_odds_valid", "open_edge", "open_profit"
+    return "odds_valid", "edge", "profit"
+
+
+def season_roi(games: pd.DataFrame, threshold: float, market: str = "kaggle") -> pd.DataFrame:
     """Accuracy on every game; ROI only on predicted winners that clear the edge."""
+    valid_col, edge_col, profit_col = market_columns(market)
     rows = []
     for season, group in games.groupby("season", sort=False):
         picks = group["home_win"] == group["pick_home"]
-        bets = group[group["odds_valid"].astype(bool) & group["edge"].notna()]
+        bets = group[as_bool(group[valid_col]) & group[edge_col].notna()]
         if threshold > 0:
-            bets = bets[bets["edge"] >= threshold]
-        profit = float(bets["profit"].sum()) if len(bets) else float("nan")
+            bets = bets[bets[edge_col] >= threshold]
+        profit = float(bets[profit_col].sum()) if len(bets) else float("nan")
         rows.append(
             {
                 "season": season,
                 "games": len(group),
                 "accuracy": float(picks.mean()),
                 "bets": len(bets),
-                "hit_rate": float((bets["profit"] > 0).mean()) if len(bets) else float("nan"),
+                "hit_rate": float((bets[profit_col] > 0).mean()) if len(bets) else float("nan"),
                 "profit": profit,
                 "roi": profit / len(bets) if len(bets) else float("nan"),
             }
         )
     return pd.DataFrame(rows)
+
+
+def same_ticket_roi(games: pd.DataFrame, threshold: float) -> pd.DataFrame | None:
+    """Reprice the closing bets at the opening line, on games that have both."""
+    if "open_odds_valid" not in games.columns:
+        return None
+    both = games[as_bool(games["odds_valid"]) & as_bool(games["open_odds_valid"])].copy()
+    both = both[both["edge"].notna() & both["open_profit"].notna()]
+    if threshold > 0:
+        both = both[both["edge"] >= threshold]
+    if both.empty:
+        return None
+    return both
 
 
 def render_results() -> None:
@@ -485,19 +511,56 @@ def render_results() -> None:
         key="results_edge_percent",
         help="0% bets every predicted winner that has a moneyline. A higher value keeps only picks that beat the line by at least that much.",
     )
-    threshold = edge_percent / 100.0
-    st.caption(
-        "Each season is scored by a logistic regression trained on the other seasons. "
-        "Accuracy uses every game. ROI is a $1 bet on the predicted winner, and only counts "
-        f"games whose edge is at least {edge_percent}%. The away price is the no-vig complement of the home price."
+    market = st.radio(
+        "Edge vs",
+        options=["Closing (AN consensus)", "Opening (AN Open)"],
+        horizontal=True,
+        help=(
+            "Closing is the Action Network consensus moneyline around puck drop. "
+            "Opening is book Open, from the 2023-24 season on, and pays at those opening prices."
+        ),
     )
+    threshold = edge_percent / 100.0
+    use_open = market.startswith("Opening")
+    if use_open:
+        st.caption(
+            "Each season is scored by a logistic regression trained on the other seasons. "
+            f"ROI is a $1 bet on the predicted winner when its edge over the vig-free opening line "
+            f"is at least {edge_percent}%. Payout uses the opening moneyline for that side. "
+            "Action Network Open coverage starts in 2023-24."
+        )
+    else:
+        st.caption(
+            "Each season is scored by a logistic regression trained on the other seasons. "
+            "Accuracy uses every game. ROI is a $1 bet on the predicted winner when its edge "
+            f"over the vig-free closing line is at least {edge_percent}%. "
+            "Payout uses the closing moneyline for that side."
+        )
     if not BETS_PATH.is_file():
         st.info("Results are not ready yet. Run python src/evaluate_historical.py.")
         return
 
     games = pd.read_csv(BETS_PATH)
-    by_season = season_roi(games, threshold)
-    overall = season_roi(games.assign(season="Overall"), threshold)
+    if use_open and "open_edge" not in games.columns:
+        st.warning(
+            "Opening odds are not in the results file. Run "
+            "`python src/fetch_opening_odds.py`, then `python src/evaluate_historical.py`."
+        )
+        return
+
+    priced = same_ticket_roi(games, threshold)
+    if priced is not None:
+        close_roi = float(priced["profit"].sum()) / len(priced)
+        opening_roi = float(priced["open_profit"].sum()) / len(priced)
+        st.caption(
+            f"Same closing bets that also have an opening price: "
+            f"closing ROI {close_roi:+.1%}, opening price {opening_roi:+.1%} "
+            f"({len(priced)} bets)."
+        )
+
+    selected = "open" if use_open else "close"
+    by_season = season_roi(games, threshold, selected)
+    overall = season_roi(games.assign(season="Overall"), threshold, selected)
     table = pd.concat([by_season, overall], ignore_index=True)
     display = table.copy()
     display["accuracy"] = display["accuracy"].map(lambda value: f"{value:.1%}")
@@ -535,7 +598,7 @@ def render_results() -> None:
             ],
             color=alt.value("#7ad7ff"),
         )
-        .properties(height=280, title=f"ROI by season at {edge_percent}% minimum edge")
+        .properties(height=280, title=f"{market} ROI by season at {edge_percent}% minimum edge")
     )
     st.altair_chart(chart, use_container_width=True)
 
