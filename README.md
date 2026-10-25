@@ -7,7 +7,7 @@ A machine learning project to predict NHL hockey game outcomes.
 ### Using Conda (Recommended)
 
 ```bash
-conda env create -f environment.yml
+conda env create -f environment.local.yml
 conda activate hockey_modelling
 ```
 

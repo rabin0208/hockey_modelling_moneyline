@@ -12,7 +12,7 @@ except ImportError:
     NHL_API_AVAILABLE = False
     print("⚠️  nhl-api-py package not installed.")
     print("   Install it with: pip install nhl-api-py")
-    print("   Or: conda env update -f environment.yml")
+    print("   Or: conda env update -f environment.local.yml")
     print()
 
 
