@@ -15,7 +15,7 @@ from nhlpy import NHLClient
 
 PROJECT_ROOT = Path(__file__).resolve().parent
 SRC_DIR = PROJECT_ROOT / "src"
-MODEL_PATH = PROJECT_ROOT / "models" / "logistic_regression_optimized.pkl"
+MODEL_PATH = SRC_DIR / "hockey_moneyline" / "artifacts" / "frozen_prospective_fitted_artifact.json"
 RESULTS_PATH = PROJECT_ROOT / "data" / "historical_accuracy_roi.csv"
 BETS_PATH = PROJECT_ROOT / "data" / "historical_bet_games.csv"
 LOCAL_TZ = ZoneInfo("America/Los_Angeles")
@@ -206,10 +206,12 @@ def games_on_date(target: date) -> list[dict]:
             {
                 "game_id": row.game_id,
                 "date": target,
-                "home_team_id": int(row.home_team_id),
+                "home_team_id": row.home_team_id,
                 "home_team_name": row.home_team_name,
-                "away_team_id": int(row.away_team_id),
+                "away_team_id": row.away_team_id,
                 "away_team_name": row.away_team_name,
+                "home_team_abbrev": row.home_team_id,
+                "away_team_abbrev": row.away_team_id,
                 "home_score": row.home_score,
                 "away_score": row.away_score,
                 "start_time": "",
@@ -384,7 +386,10 @@ def render_slate(target: date, recommendations_only: bool, edge_threshold: float
 
     st.subheader(f"{target:%A, %B %-d} matchups")
     if is_past:
-        st.caption("Completed games. Probabilities come from the model trained on the full history, so this is not the held-out test. Use Results for that.")
+        st.caption(
+            "Completed games. Probabilities come from the frozen model trained on "
+            "2021-22 through 2025-26, so those seasons are not a held-out test. Use Results for that."
+        )
     else:
         st.caption(
             f"Showing {len(visible)} of {len(scored)} games. "
@@ -524,14 +529,16 @@ def render_results() -> None:
     use_open = market.startswith("Opening")
     if use_open:
         st.caption(
-            "Each season is scored by a logistic regression trained on the other seasons. "
+            "Each season is held out and scored by the frozen logistic regression, "
+            "trained on the other seasons with the 25 moneyline features. "
             f"ROI is a $1 bet on the predicted winner when its edge over the vig-free opening line "
             f"is at least {edge_percent}%. Payout uses the opening moneyline for that side. "
             "Action Network Open coverage starts in 2023-24."
         )
     else:
         st.caption(
-            "Each season is scored by a logistic regression trained on the other seasons. "
+            "Each season is held out and scored by the frozen logistic regression, "
+            "trained on the other seasons with the 25 moneyline features. "
             "Accuracy uses every game. ROI is a $1 bet on the predicted winner when its edge "
             f"over the vig-free closing line is at least {edge_percent}%. "
             "Payout uses the closing moneyline for that side."
@@ -648,7 +655,7 @@ with st.sidebar:
     if target_date == today:
         st.button("View tomorrow", use_container_width=True, on_click=choose_tomorrow)
     st.divider()
-    st.caption("Model: logistic regression, C=0.001, trained on every completed game in the feature file.")
+    st.caption("Slate model: frozen logistic regression, trained on 2021-22 through 2025-26. Results holds out each season.")
 
 slate_tab, results_tab = st.tabs(["Daily slate", "Results"])
 with slate_tab:

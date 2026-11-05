@@ -33,6 +33,7 @@ ENV/
 # Data files
 data/*.json
 !data/games_all_seasons.json
+data/cache/
 
 # IDE
 .vscode/

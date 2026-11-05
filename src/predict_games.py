@@ -1,32 +1,36 @@
 """
-Predict outcomes for upcoming NHL games using trained models.
+Predict outcomes for upcoming NHL games.
 
-This script:
-1. Loads a saved model (logistic regression or random forest)
-2. Fetches upcoming games from the NHL API
-3. Creates features for those games
-4. Makes predictions with probabilities
-5. Displays results in a readable format
+Uses the copied hockey_moneyline feature builder and its frozen logistic
+regression. Upcoming games are fetched from the NHL API.
 """
 
 import os
 import sys
 import pickle
+import numpy as np
 import pandas as pd
-from datetime import datetime, timedelta, date
+from datetime import datetime, timedelta
 from nhlpy import NHLClient
 
 # Add src directory to path for imports
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from create_features import (
-    calculate_team_stats_up_to_date,
-    calculate_recent_form,
-    calculate_head_to_head,
-    calculate_nst_stats_up_to_date,
-    match_team_name_to_nst,
-    get_season_from_date,
-    get_rest_days
+    FROZEN_FEATURE_COLUMNS,
+    feature_frame,
+    features_for_game,
+    load_source,
+    season_id,
+)
+from hockey_moneyline.errors import SchemaError
+from hockey_moneyline.normalize import canonical_moneypuck_team_code
+
+DEFAULT_MODEL = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)),
+    "hockey_moneyline",
+    "artifacts",
+    "frozen_prospective_fitted_artifact.json",
 )
 
 
@@ -34,6 +38,21 @@ def load_model(model_path):
     """Load a saved model from file."""
     if not os.path.exists(model_path):
         raise FileNotFoundError(f"Model file not found: {model_path}")
+
+    if str(model_path).endswith(".json"):
+        from hockey_moneyline.prospective_artifact import (
+            assert_canonical_frozen_artifact,
+            load_frozen_artifact_from_path,
+        )
+
+        print(f"Loading frozen moneyline model from {model_path}...")
+        artifact = assert_canonical_frozen_artifact(load_frozen_artifact_from_path(model_path))
+        model = artifact.pipeline()
+        model.named_steps["scaler"].feature_names_in_ = np.array(
+            artifact.feature_columns, dtype=object
+        )
+        print("✓ Frozen prospective model loaded")
+        return model, list(artifact.feature_columns)
     
     print(f"Loading model from {model_path}...")
     with open(model_path, 'rb') as f:
@@ -191,6 +210,24 @@ def parse_game_data(game):
                 'Unknown'
             )
         
+        home_abbrev = None
+        away_abbrev = None
+        if home_team:
+            home_abbrev = home_team.get("abbrev") or home_team.get("triCode") or home_team.get("abbreviation")
+        if away_team:
+            away_abbrev = away_team.get("abbrev") or away_team.get("triCode") or away_team.get("abbreviation")
+        if not home_abbrev or not away_abbrev:
+            print(f"  Warning: Missing team abbreviations for game {game_id}")
+            return None
+        try:
+            home_code = canonical_moneypuck_team_code(home_abbrev, season_id(game_date))
+            away_code = canonical_moneypuck_team_code(away_abbrev, season_id(game_date))
+        except SchemaError as exc:
+            print(f"  Warning: Could not map teams for game {game_id}: {exc}")
+            return None
+        home_team_id = home_code
+        away_team_id = away_code
+
         if home_team_id is None or away_team_id is None:
             print(f"  Warning: Missing team IDs for game {game_id}")
             return None
@@ -210,7 +247,9 @@ def parse_game_data(game):
             'home_wins': None,  # Not yet played
             'home_score': None,
             'away_score': None,
-            'season': f"{game_date.year}_{game_date.year+1}" if game_date.month >= 10 else f"{game_date.year-1}_{game_date.year}",
+            'season': season_id(game_date),
+            'home_team_abbrev': home_code,
+            'away_team_abbrev': away_code,
             'start_time': game.get('startTimeUTC') or '',
         }
     except Exception as e:
@@ -221,203 +260,36 @@ def parse_game_data(game):
 
 
 def create_features_for_game(games_df, game, feature_columns):
-    """Create features for a single upcoming game."""
-    game_date = game['date']
-    home_team_id = game['home_team_id']
-    away_team_id = game['away_team_id']
-    home_team_name = game['home_team_name']
-    away_team_name = game['away_team_name']
-    
-    # Ensure game_date is a date object for comparison
-    if isinstance(game_date, str):
-        game_date = pd.to_datetime(game_date).date()
-    elif isinstance(game_date, pd.Timestamp):
-        game_date = game_date.date()
-    elif not isinstance(game_date, date):
-        print(f"    Debug: Invalid game_date type: {type(game_date)}, value: {game_date}")
+    """Create the frozen 25 pregame features for one game."""
+    columns = list(feature_columns or FROZEN_FEATURE_COLUMNS)
+    game_id = game.get("game_id")
+    if (
+        game_id is not None
+        and "game_id" in games_df.columns
+        and "home_prior_games" in games_df.columns
+    ):
+        match = games_df[games_df["game_id"].astype(str) == str(game_id)]
+        if len(match) == 1:
+            row = match.iloc[0]
+            return pd.DataFrame([{column: float(row[column]) for column in columns}])
+
+    features = features_for_game(game)
+    if features is None:
+        print(
+            f"  ⚠ Skipping {game.get('away_team_name', '?')} @ {game.get('home_team_name', '?')} "
+            "(fewer than 5 prior games, or expected-goal history is missing)"
+        )
         return None
-    
-    # Check if date is valid (NaT check)
-    try:
-        if pd.isna(game_date) or game_date is None:
-            print(f"    Debug: game_date is NaT or None for {home_team_name} vs {away_team_name}")
-            return None
-    except (TypeError, ValueError):
-        # If pd.isna fails, the date is probably valid
-        pass
-    
-    # Get the season from the game date (for season-only stats)
-    game_season = get_season_from_date(game_date)
-    
-    # Ensure games_df date column is date type
-    if games_df['date'].dtype != 'object' or isinstance(games_df['date'].iloc[0], str):
-        games_df = games_df.copy()
-        games_df['date'] = pd.to_datetime(games_df['date']).dt.date
-    
-    # Convert team IDs to same type (might be int vs float)
-    home_team_id = int(home_team_id) if home_team_id is not None else None
-    away_team_id = int(away_team_id) if away_team_id is not None else None
-    
-    # Ensure games_df team IDs are int
-    if games_df['home_team_id'].dtype != 'int64':
-        games_df = games_df.copy()
-        games_df['home_team_id'] = games_df['home_team_id'].astype('Int64')
-        games_df['away_team_id'] = games_df['away_team_id'].astype('Int64')
-    
-    # Debug: Check if team IDs exist in historical data for this season
-    home_games = games_df[
-        ((games_df['home_team_id'] == home_team_id) | (games_df['away_team_id'] == home_team_id)) &
-        (games_df['date'] < game_date) &
-        (games_df['season'] == game_season) &
-        (games_df['home_wins'].notna())
-    ]
-    away_games = games_df[
-        ((games_df['home_team_id'] == away_team_id) | (games_df['away_team_id'] == away_team_id)) &
-        (games_df['date'] < game_date) &
-        (games_df['season'] == game_season) &
-        (games_df['home_wins'].notna())
-    ]
-    
-    # Debug output for first game
-    if len(home_games) == 0 and home_team_id is not None:
-        # Check if team ID exists at all (regardless of date)
-        all_home_games = games_df[
-            ((games_df['home_team_id'] == home_team_id) | (games_df['away_team_id'] == home_team_id))
-        ]
-        if len(all_home_games) == 0:
-            print(f"    Debug: Home team ID {home_team_id} ({home_team_name}) not found in historical data at all")
-            print(f"    Debug: Sample historical team IDs: {list(games_df['home_team_id'].unique()[:5])}")
-        else:
-            print(f"    Debug: Home team ID {home_team_id} has {len(all_home_games)} total games, but 0 in season {game_season} before {game_date}")
-    
-    # Get team stats up to this date (current season only)
-    home_stats = calculate_team_stats_up_to_date(games_df, home_team_id, game_date, season=game_season)
-    away_stats = calculate_team_stats_up_to_date(games_df, away_team_id, game_date, season=game_season)
-    
-    # Skip if we don't have enough data
-    if not home_stats or not away_stats:
-        # Provide more detailed error message
-        home_count = len(home_games)
-        away_count = len(away_games)
-        if home_count < 5:
-            print(f"  ⚠ Skipping {away_team_name} @ {home_team_name} (home team has only {home_count} historical games, need 5+)")
-        elif away_count < 5:
-            print(f"  ⚠ Skipping {away_team_name} @ {home_team_name} (away team has only {away_count} historical games, need 5+)")
-        else:
-            print(f"  ⚠ Skipping {away_team_name} @ {home_team_name} (home: {home_count} games, away: {away_count} games, but stats calculation failed)")
-        return None
-    
-    # Get recent form
-    home_recent = calculate_recent_form(games_df, home_team_id, game_date)
-    away_recent = calculate_recent_form(games_df, away_team_id, game_date)
-    
-    # Get head-to-head statistics (cross-season, as matchup history persists)
-    h2h_stats = calculate_head_to_head(games_df, home_team_id, away_team_id, game_date)
-    
-    # Rest days (days since each team's last game)
-    # For get_rest_days we need dates comparable with game_date; use games_df as-is (handles Timestamp or date)
-    home_rest_days = get_rest_days(games_df, home_team_id, game_date)
-    away_rest_days = get_rest_days(games_df, away_team_id, game_date)
-    
-    # Get Natural Stat Trick advanced stats (current season only)
-    home_nst_name = match_team_name_to_nst(home_team_name)
-    away_nst_name = match_team_name_to_nst(away_team_name)
-    home_nst = calculate_nst_stats_up_to_date(home_nst_name, game_date, season=game_season) if home_nst_name else None
-    away_nst = calculate_nst_stats_up_to_date(away_nst_name, game_date, season=game_season) if away_nst_name else None
-    
-    # Create feature vector (same format as training)
-    # NOTE: Reduced feature set - redundant features removed:
-    # - home_games_played, away_games_played (just sample size)
-    # - win_pct_diff, goal_differential_diff (derived)
-    # - h2h_games, days_since_last_meeting, h2h_recent_home_win_pct (weak predictors)
-    # - hdcf_pct, scf_pct (correlated with xgf_pct)
-    # - xgf_pct_diff, cf_pct_diff (derived)
-    features = {
-        # Home team features (current season stats)
-        'home_win_pct': home_stats['win_pct'],
-        'home_goals_for_avg': home_stats['goals_for_avg'],
-        'home_goals_against_avg': home_stats['goals_against_avg'],
-        'home_goal_differential_avg': home_stats['goal_differential_avg'],
-        'home_home_win_pct': home_stats['home_win_pct'],
-        
-        # Away team features (current season stats)
-        'away_win_pct': away_stats['win_pct'],
-        'away_goals_for_avg': away_stats['goals_for_avg'],
-        'away_goals_against_avg': away_stats['goals_against_avg'],
-        'away_goal_differential_avg': away_stats['goal_differential_avg'],
-        'away_away_win_pct': away_stats['away_win_pct'],
-        
-        # Recent form (last 10 games)
-        'home_recent_win_pct': home_recent['recent_win_pct'] if home_recent else 0.5,
-        'home_recent_goal_differential': home_recent['recent_goal_differential_avg'] if home_recent else 0,
-        'away_recent_win_pct': away_recent['recent_win_pct'] if away_recent else 0.5,
-        'away_recent_goal_differential': away_recent['recent_goal_differential_avg'] if away_recent else 0,
-        
-        # Head-to-head features (cross-season)
-        'h2h_home_win_pct': h2h_stats['h2h_home_team_win_pct'] if h2h_stats else 0.5,
-        'h2h_goal_differential': h2h_stats['h2h_goal_differential'] if h2h_stats else 0,
-        'last_meeting_home_won': h2h_stats['last_meeting_home_won'] if h2h_stats else 0.5,
-        
-        # Rest days (0 = back-to-back; higher = more rest)
-        'home_rest_days': home_rest_days,
-        'away_rest_days': away_rest_days,
-        
-        # Natural Stat Trick advanced stats (current season)
-        # Use neutral defaults for missing values: 50% for percentages, 1.0 for PDO
-        'home_xgf_pct_avg': home_nst['xgf_pct_avg'] if home_nst and home_nst.get('xgf_pct_avg') is not None else 50.0,
-        'home_cf_pct_avg': home_nst['cf_pct_avg'] if home_nst and home_nst.get('cf_pct_avg') is not None else 50.0,
-        'home_pdo_avg': home_nst['pdo_avg'] if home_nst and home_nst.get('pdo_avg') is not None else 100.0,
-        'away_xgf_pct_avg': away_nst['xgf_pct_avg'] if away_nst and away_nst.get('xgf_pct_avg') is not None else 50.0,
-        'away_cf_pct_avg': away_nst['cf_pct_avg'] if away_nst and away_nst.get('cf_pct_avg') is not None else 50.0,
-        'away_pdo_avg': away_nst['pdo_avg'] if away_nst and away_nst.get('pdo_avg') is not None else 100.0,
-    }
-    
-    # Create DataFrame with features in correct order
-    features_df = pd.DataFrame([features])
-    
-    # If we have feature columns from the model, ensure correct order
-    if feature_columns:
-        # Add missing columns with default values
-        for col in feature_columns:
-            if col not in features_df.columns:
-                features_df[col] = 0
-        # Reorder to match training data
-        features_df = features_df[feature_columns]
-    
-    return features_df
+    return pd.DataFrame([{column: float(features[column]) for column in columns}])
 
 
 def load_historical_games():
-    """Load historical games for feature calculation."""
-    print("\nLoading historical game data...")
-    
-    # Use the same loading function from create_features.py
-    from create_features import load_games
-    
-    games = load_games('data')
-    
-    if not games:
-        raise ValueError("No historical games found. Please run src/fetch_historical_seasons.py first.")
-    
-    print(f"  Loaded {len(games)} historical games")
-    
-    # Convert to DataFrame using the same extraction function
-    from create_features import extract_game_info
-    
-    games_list = []
-    for game in games:
-        game_info = extract_game_info(game)
-        if game_info:
-            games_list.append(game_info)
-    
-    games_df = pd.DataFrame(games_list)
-    
-    if len(games_df) == 0:
-        raise ValueError("No valid games found in historical data.")
-    
-    # Parse dates
-    games_df['date'] = pd.to_datetime(games_df['date']).dt.date
-    
+    """Load MoneyPuck history and the frozen 25 pregame features."""
+    print("\nLoading MoneyPuck history for the frozen feature set...")
+    games_df = feature_frame(load_source())
+    if games_df.empty:
+        raise ValueError("No eligible games were built from the MoneyPuck history.")
+    print(f"  Loaded {len(games_df)} games with frozen features")
     return games_df
 
 
@@ -563,8 +435,8 @@ def main():
     parser.add_argument(
         '--model',
         type=str,
-        default='models/random_forest_optimized.pkl',
-        help='Path to model file (default: models/random_forest_optimized.pkl)'
+        default=DEFAULT_MODEL,
+        help='Path to model file (default: frozen hockey_moneyline artifact)'
     )
     parser.add_argument(
         '--days',

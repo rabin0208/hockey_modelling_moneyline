@@ -1,23 +1,23 @@
 """
-Leave-one-season-out accuracy and betting ROI for the best model type.
+Leave-one-season-out accuracy and betting ROI for the frozen moneyline model.
 
-Trains optimized logistic regression on all seasons except the test season,
-then scores that held-out year. ROI assumes a $1 moneyline bet on the
-model's predicted winner at the Action Network closing price. When
-data/opening_odds.csv exists, the same picks are also scored at the
-opening price.
+Each held-out season is scored by the same logistic regression the slate uses
+(standard scaling, lbfgs, max_iter=1000), trained on the other seasons and the
+frozen 25 features. ROI assumes a $1 moneyline bet on the model's predicted
+winner at the Action Network closing price. When data/opening_odds.csv exists,
+the same picks are also scored at the opening price.
 """
 
 import os
 import sys
 import pandas as pd
 import numpy as np
-from sklearn.pipeline import make_pipeline
-from sklearn.preprocessing import StandardScaler
-from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import accuracy_score, roc_auc_score, log_loss, brier_score_loss
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+from hockey_moneyline.evaluate import _new_logistic_model
+from hockey_moneyline.prospective_artifact import FROZEN_FEATURE_COLUMNS
 
 EXCLUDE_COLS = [
     'game_id', 'date', 'season', 'home_team_id', 'away_team_id',
@@ -95,19 +95,14 @@ def priced_bet(actual, pick_home, p_home, home_ml, away_ml):
 
 
 def make_model():
-    return make_pipeline(
-        StandardScaler(),
-        LogisticRegression(
-            C=0.001,
-            max_iter=5000,
-            random_state=42,
-            solver='lbfgs',
-        ),
-    )
+    return _new_logistic_model()
 
 
 def feature_columns(df):
-    return [c for c in df.columns if c not in EXCLUDE_COLS]
+    missing = [column for column in FROZEN_FEATURE_COLUMNS if column not in df.columns]
+    if missing:
+        raise SystemExit(f"game_features.csv is missing frozen columns: {missing}")
+    return list(FROZEN_FEATURE_COLUMNS)
 
 
 def complete_rows(df):
@@ -206,7 +201,7 @@ def main():
     print("Historical accuracy and ROI (leave-one-season-out)")
     print("=" * 72)
 
-    df = pd.read_csv('data/game_features.csv')
+    df = pd.read_csv('data/game_features.csv', float_precision='round_trip')
     df['date'] = pd.to_datetime(df['date'])
     print(f"Loaded {len(df)} games")
 

@@ -56,16 +56,15 @@ This will download all games from the past five NHL seasons and save them to:
 
 ## Create Features
 
-Process the historical games and create features for machine learning:
+Build the frozen 25-column feature table used by the hockey_moneyline model. The script downloads MoneyPuck's published game file on first run and writes:
+
+- `data/game_features.csv`
 
 ```bash
 python src/create_features.py
 ```
 
-This will create a CSV file with features for each game:
-- `data/game_features.csv`
-
-Features include team win percentages, goal differentials, recent form, and more.
+Predictions use those same columns and the frozen logistic regression in `src/hockey_moneyline/artifacts/frozen_prospective_fitted_artifact.json`.
 
 ## Update Data with Latest Information
 
