@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import sys
+import time
 import unicodedata
 from datetime import date, datetime, timedelta
 from pathlib import Path
@@ -24,6 +25,7 @@ SLATE_CAP = 0.10
 
 sys.path.insert(0, str(SRC_DIR))
 
+from create_features import load_source  # noqa: E402
 from hockey_moneyline.errors import AcquisitionError  # noqa: E402
 from predict_games import (  # noqa: E402
     create_features_for_game,
@@ -179,14 +181,19 @@ def get_history(generation: int) -> tuple[pd.DataFrame, str | None]:
 
     Generation 0 refreshes only when the file is older than 12 hours. Each
     Refresh data click bumps the generation, which downloads and rescores
-    immediately.
+    immediately. The download goes through ``load_source`` so a newer
+    ``app.py`` still runs against an older ``load_historical_games``.
     """
     force = generation > 0
+    stale = (
+        not MONEYPUCK_CACHE.exists()
+        or MONEYPUCK_CACHE.stat().st_size == 0
+        or (time.time() - MONEYPUCK_CACHE.stat().st_mtime) >= SOURCE_MAX_AGE.total_seconds()
+    )
     try:
-        frame = load_historical_games(
-            refresh=force,
-            max_age_seconds=None if force else SOURCE_MAX_AGE.total_seconds(),
-        )
+        if force or stale:
+            load_source(refresh=True)
+        frame = load_historical_games()
     except AcquisitionError as exc:
         try:
             frame = load_historical_games()
