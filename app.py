@@ -22,10 +22,8 @@ LOCAL_TZ = ZoneInfo("America/Los_Angeles")
 MAX_STAKE = 0.05
 SLATE_CAP = 0.10
 
-if str(SRC_DIR) not in sys.path:
-    sys.path.insert(0, str(SRC_DIR))
+sys.path.insert(0, str(SRC_DIR))
 
-from create_features import source_cache_token  # noqa: E402
 from hockey_moneyline.errors import AcquisitionError  # noqa: E402
 from predict_games import (  # noqa: E402
     create_features_for_game,
@@ -35,6 +33,15 @@ from predict_games import (  # noqa: E402
 )
 
 SOURCE_MAX_AGE = timedelta(hours=12)
+MONEYPUCK_CACHE = PROJECT_ROOT / "data" / "cache" / "moneypuck" / "all_teams.csv"
+
+
+def source_cache_token() -> str:
+    """Identity of the MoneyPuck file currently on disk."""
+    if not MONEYPUCK_CACHE.exists() or MONEYPUCK_CACHE.stat().st_size == 0:
+        return "missing"
+    stat = MONEYPUCK_CACHE.stat()
+    return f"{stat.st_mtime_ns}:{stat.st_size}"
 
 
 st.set_page_config(
