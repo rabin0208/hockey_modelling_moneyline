@@ -283,10 +283,12 @@ def create_features_for_game(games_df, game, feature_columns):
     return pd.DataFrame([{column: float(features[column]) for column in columns}])
 
 
-def load_historical_games():
+def load_historical_games(refresh: bool = False, max_age_seconds: float | None = None):
     """Load MoneyPuck history and the frozen 25 pregame features."""
     print("\nLoading MoneyPuck history for the frozen feature set...")
-    games_df = feature_frame(load_source())
+    games_df = feature_frame(
+        load_source(refresh=refresh, max_age_seconds=max_age_seconds)
+    )
     if games_df.empty:
         raise ValueError("No eligible games were built from the MoneyPuck history.")
     print(f"  Loaded {len(games_df)} games with frozen features")

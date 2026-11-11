@@ -25,12 +25,16 @@ SLATE_CAP = 0.10
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
+from create_features import source_cache_token  # noqa: E402
+from hockey_moneyline.errors import AcquisitionError  # noqa: E402
 from predict_games import (  # noqa: E402
     create_features_for_game,
     load_historical_games,
     load_model,
     parse_game_data,
 )
+
+SOURCE_MAX_AGE = timedelta(hours=12)
 
 
 st.set_page_config(
@@ -158,9 +162,33 @@ def get_model():
     return model, feature_columns
 
 
-@st.cache_resource(show_spinner=False)
-def get_history() -> pd.DataFrame:
-    return load_historical_games()
+def history_generation() -> int:
+    return int(st.session_state.get("history_generation", 0))
+
+
+@st.cache_resource(ttl=SOURCE_MAX_AGE, show_spinner=False)
+def get_history(generation: int) -> tuple[pd.DataFrame, str | None]:
+    """Return scored history and a warning if the MoneyPuck download failed.
+
+    Generation 0 refreshes only when the file is older than 12 hours. Each
+    Refresh data click bumps the generation, which downloads and rescores
+    immediately.
+    """
+    force = generation > 0
+    try:
+        frame = load_historical_games(
+            refresh=force,
+            max_age_seconds=None if force else SOURCE_MAX_AGE.total_seconds(),
+        )
+    except AcquisitionError as exc:
+        try:
+            frame = load_historical_games()
+        except AcquisitionError:
+            raise exc
+        return frame, (
+            "MoneyPuck could not be refreshed. Probabilities still use the last downloaded results."
+        )
+    return frame, None
 
 
 def predict_one(model, feature_columns, history: pd.DataFrame, game: dict) -> dict | None:
@@ -181,7 +209,7 @@ def predict_one(model, feature_columns, history: pd.DataFrame, game: dict) -> di
     }
 
 
-def games_on_date(target: date) -> list[dict]:
+def games_on_date(target: date, history: pd.DataFrame | None = None) -> list[dict]:
     today = date.today()
     if target >= today:
         client = NHLClient(debug=False)
@@ -198,7 +226,8 @@ def games_on_date(target: date) -> list[dict]:
                 parsed.append(row)
         return parsed
 
-    history = get_history()
+    if history is None:
+        history, _warning = get_history(history_generation())
     rows = history[(history["date"] == target) & history["home_wins"].notna()]
     parsed = []
     for row in rows.itertuples(index=False):
@@ -311,12 +340,14 @@ def add_recommendations(frame: pd.DataFrame, edge_threshold: float) -> pd.DataFr
     return games.sort_values(["bet_edge", "start_time"], ascending=[False, True], na_position="last")
 
 
-@st.cache_data(ttl=3 * 3600, show_spinner=False)
-def load_slate(target: date) -> pd.DataFrame:
+@st.cache_data(ttl=SOURCE_MAX_AGE, show_spinner=False)
+def load_slate(target: date, history_token: str, generation: int) -> pd.DataFrame:
+    if not history_token:
+        raise RuntimeError("MoneyPuck cache token is missing")
     model, feature_columns = get_model()
-    history = get_history()
+    history, _warning = get_history(generation)
     rows = []
-    for game in games_on_date(target):
+    for game in games_on_date(target, history):
         prediction = predict_one(model, feature_columns, history, game)
         if prediction:
             rows.append(prediction)
@@ -350,15 +381,29 @@ def render_team(name: str, model_prob: float, market_prob: object, odds: object,
 
 def render_slate(target: date, recommendations_only: bool, edge_threshold: float, bankroll: float) -> None:
     is_past = target < date.today()
-    with st.spinner(f"Scoring the {target:%B %-d} slate…"):
+    with st.spinner(f"Checking MoneyPuck and scoring the {target:%B %-d} slate…"):
         try:
-            scored = load_slate(target)
+            generation = history_generation()
+            history, warning = get_history(generation)
+            st.session_state["history_refresh_warning"] = warning
+            scored = load_slate(target, source_cache_token(), generation)
             if not is_past and not scored.empty:
                 scored = attach_market(scored, target)
                 scored = add_recommendations(scored, edge_threshold)
         except Exception as exc:
             st.error(str(exc))
             return
+
+    warning = st.session_state.get("history_refresh_warning")
+    if warning:
+        st.warning(warning)
+    if not history.empty and "date" in history.columns:
+        latest = max(history["date"])
+        st.caption(
+            f"Team results through {latest:%B %-d} are included. "
+            "MoneyPuck is checked automatically every 12 hours. "
+            "Refresh data downloads the latest file and rescores the slate."
+        )
 
     if scored.empty:
         st.info("No NHL games were found for this date.")
@@ -650,12 +695,18 @@ with st.sidebar:
     )
     bankroll = st.number_input("Bankroll ($)", min_value=0, value=1000, step=100, disabled=is_past)
     if st.button("Refresh data", type="primary", use_container_width=True):
+        st.session_state["history_generation"] = history_generation() + 1
+        get_history.clear()
         load_slate.clear()
         st.rerun()
     if target_date == today:
         st.button("View tomorrow", use_container_width=True, on_click=choose_tomorrow)
     st.divider()
-    st.caption("Slate model: frozen logistic regression, trained on 2021-22 through 2025-26. Results holds out each season.")
+    st.caption(
+        "Slate model: frozen logistic regression, trained on 2021-22 through 2025-26. "
+        "Results holds out each season. MoneyPuck refreshes automatically every 12 hours, "
+        "or immediately from Refresh data."
+    )
 
 slate_tab, results_tab = st.tabs(["Daily slate", "Results"])
 with slate_tab:

@@ -20,7 +20,7 @@ PROJECT_ROOT = SRC_DIR.parent
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
-from hockey_moneyline.acquire import acquire_source_csv
+from hockey_moneyline.acquire import acquire_source_csv, cache_path
 from hockey_moneyline.advanced_stats import inspect_advanced_stats_csv_for_cycle2_development
 from hockey_moneyline.current_season_prior import (
     CURRENT_SEASON,
@@ -95,6 +95,7 @@ TEAM_NAMES = {
 }
 
 _SOURCE = None
+_SOURCE_STAT: tuple[int, int] | None = None
 
 
 def season_id(game_date: date) -> int:
@@ -119,13 +120,38 @@ class FeatureSource:
         self.development_rows = development_rows
 
 
-def load_source(refresh: bool = False) -> FeatureSource:
-    """Download MoneyPuck if needed and build the same inputs the other model uses."""
-    global _SOURCE
-    if _SOURCE is not None and not refresh:
+def source_cache_token() -> str:
+    """Identity of the MoneyPuck file currently on disk."""
+    path = cache_path(CACHE_DIR)
+    if not path.exists() or path.stat().st_size == 0:
+        return "missing"
+    stat = path.stat()
+    return f"{stat.st_mtime_ns}:{stat.st_size}"
+
+
+def load_source(
+    refresh: bool = False,
+    max_age_seconds: float | None = None,
+) -> FeatureSource:
+    """Download MoneyPuck if needed and build the same inputs the other model uses.
+
+    An in-memory source is reused only when it was built from the file still on
+    disk. ``max_age_seconds`` re-downloads that file once it is older than the
+    limit, which is how the deployed app picks up last night's results.
+    """
+    global _SOURCE, _SOURCE_STAT
+    if _SOURCE is not None and not refresh and max_age_seconds is None:
         return _SOURCE
 
-    path = acquire_source_csv(cache_dir=CACHE_DIR, refresh=refresh)
+    path = acquire_source_csv(
+        cache_dir=CACHE_DIR,
+        refresh=refresh,
+        max_age_seconds=max_age_seconds,
+    )
+    stat = (path.stat().st_mtime_ns, path.stat().st_size)
+    if _SOURCE is not None and _SOURCE_STAT == stat and not refresh:
+        return _SOURCE
+
     print(f"Loading MoneyPuck games from {path}...")
     inspection = inspect_advanced_stats_csv_for_cycle2_development(
         path,
@@ -146,6 +172,7 @@ def load_source(refresh: bool = False) -> FeatureSource:
         f"{len(development_rows)} eligible development rows"
     )
     _SOURCE = FeatureSource(games, records, full_schedule, development_rows)
+    _SOURCE_STAT = stat
     return _SOURCE
 
 

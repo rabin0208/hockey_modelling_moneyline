@@ -6,6 +6,8 @@ and does not scrape unlisted MoneyPuck endpoints.
 
 from __future__ import annotations
 
+import threading
+import time
 from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
@@ -15,6 +17,7 @@ from hockey_moneyline.provenance import SOURCE_FILE_URL, USER_AGENT
 
 DEFAULT_CACHE_DIR = Path("data/cache/moneypuck")
 CACHE_FILENAME = "all_teams.csv"
+_DOWNLOAD_LOCK = threading.Lock()
 
 
 def cache_path(cache_dir: Path = DEFAULT_CACHE_DIR) -> Path:
@@ -49,17 +52,39 @@ def _download(url: str, destination: Path) -> None:
     tmp_path.replace(destination)
 
 
+def _cache_is_fresh(
+    path: Path,
+    *,
+    refresh: bool,
+    max_age_seconds: float | None,
+) -> bool:
+    if refresh or not path.exists() or path.stat().st_size == 0:
+        return False
+    if max_age_seconds is None:
+        return True
+    return (time.time() - path.stat().st_mtime) < max_age_seconds
+
+
 def acquire_source_csv(
     cache_dir: Path = DEFAULT_CACHE_DIR,
     refresh: bool = False,
     url: str = SOURCE_FILE_URL,
+    max_age_seconds: float | None = None,
 ) -> Path:
+    """Return the cached MoneyPuck CSV, downloading when it is missing or stale.
+
+    ``max_age_seconds=None`` keeps the previous behavior: an existing file is
+    reused until ``refresh=True``. A max age lets a long-running app pick up
+    newly published games without a manual download.
+    """
+
     path = cache_path(cache_dir)
-    if path.exists() and not refresh:
-        if path.stat().st_size == 0:
-            raise AcquisitionError(f"Cached MoneyPuck file is empty: {path}")
+    if _cache_is_fresh(path, refresh=refresh, max_age_seconds=max_age_seconds):
         return path
-    _download(url, path)
+    with _DOWNLOAD_LOCK:
+        if _cache_is_fresh(path, refresh=refresh, max_age_seconds=max_age_seconds):
+            return path
+        _download(url, path)
     if not path.exists() or path.stat().st_size == 0:
         raise AcquisitionError(f"Downloaded MoneyPuck file is empty: {path}")
     return path
