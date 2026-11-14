@@ -185,6 +185,7 @@ def _coverage_report(
 def inspect_advanced_stats_csv(
     path: Path,
     seasons: Sequence[int] = ISSUE19_SEASONS,
+    shootout_winners: Mapping[str, int] | None = None,
 ) -> AdvancedInspection:
     """Inspect only Issue #19 development seasons from the canonical CSV.
 
@@ -202,7 +203,9 @@ def inspect_advanced_stats_csv(
             "Issue #19 advanced-stat inspection is restricted to 2021-22 through 2024-25; "
             "2025-26 and other seasons are not permitted"
         )
-    return _inspect_advanced_stats_selected(path, selected)
+    return _inspect_advanced_stats_selected(
+        path, selected, shootout_winners=shootout_winners
+    )
 
 
 def inspect_advanced_stats_csv_for_authorized_heldout(
@@ -210,6 +213,7 @@ def inspect_advanced_stats_csv_for_authorized_heldout(
     seasons: Sequence[int],
     *,
     confirm_consume_2025_26: bool,
+    shootout_winners: Mapping[str, int] | None = None,
 ) -> AdvancedInspection:
     """Gated Issue #19 join/timing inspection for the frozen heldout pathway.
 
@@ -228,7 +232,9 @@ def inspect_advanced_stats_csv_for_authorized_heldout(
             "Authorized heldout advanced-stat inspection requires exactly "
             "20212022,20222023,20232024,20242025,20252026"
         )
-    return _inspect_advanced_stats_selected(path, selected)
+    return _inspect_advanced_stats_selected(
+        path, selected, shootout_winners=shootout_winners
+    )
 
 
 CYCLE2_DEVELOPMENT_SEASONS = ISSUE19_SEASONS + (HELD_OUT_SEASON,)
@@ -238,6 +244,7 @@ RESERVED_FUTURE_SEASON = 20262027
 def inspect_advanced_stats_csv_for_cycle2_development(
     path: Path,
     seasons: Sequence[int],
+    shootout_winners: Mapping[str, int] | None = None,
 ) -> AdvancedInspection:
     """Cycle-2 development wrapper over the Issue #19 parse/join/timing primitive.
 
@@ -269,15 +276,20 @@ def inspect_advanced_stats_csv_for_cycle2_development(
             "Cycle-2 advanced-stat inspection requires exactly "
             "20212022,20222023,20232024,20242025,20252026"
         )
-    return _inspect_advanced_stats_selected(path, selected)
+    return _inspect_advanced_stats_selected(
+        path, selected, shootout_winners=shootout_winners
+    )
 
 
 def _inspect_advanced_stats_selected(
     path: Path,
     selected: Sequence[int],
+    shootout_winners: Mapping[str, int] | None = None,
 ) -> AdvancedInspection:
     selected = tuple(selected)
-    normalized = games_from_moneypuck_csv(path, seasons=selected)
+    normalized = games_from_moneypuck_csv(
+        path, seasons=selected, shootout_winners=shootout_winners
+    )
     games = normalized.games
     expected = _expected_team_keys(games)
     selected_raw = {str(int(str(season)[:4])) for season in selected}

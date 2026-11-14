@@ -206,6 +206,7 @@ def _base_and_elo_snapshot(
             ratings[game.home_team_id],
             ratings[game.away_team_id],
             bool(game.home_win),
+            decided_in_shootout=bool(game.decided_in_shootout),
         )
         ratings[game.home_team_id] = new_home
         ratings[game.away_team_id] = new_away

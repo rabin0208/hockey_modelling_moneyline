@@ -75,12 +75,12 @@ COMMITTED_FROZEN_ARTIFACT_RELATIVE_PATH = (
     "src/hockey_moneyline/artifacts/frozen_prospective_fitted_artifact.json"
 )
 EXPECTED_FITTED_ARTIFACT_SHA256 = (
-    "1739c7edf14ecd23ab3e94b54ef9194a2d868026ceb320663a85fb9a292aac28"
+    "763ef69cce4e414b926546fee09e7a66ff54eab41d695f499f01795f150238df"
 )
 EXPECTED_TRAINING_ROW_IDENTITY_SHA256 = (
-    "743373bdbb31e22cc5f188402cc736808f7cac9515bf53f5ee88a058dbff168c"
+    "f1847cc7808bc081790755b8d10034bc300f058956095a7842f0719f0b8c2719"
 )
-EXPECTED_FROZEN_TRAINING_ROW_COUNT = 5991
+EXPECTED_FROZEN_TRAINING_ROW_COUNT = 6469
 
 
 def assert_frozen_prospective_contract() -> None:
@@ -140,7 +140,7 @@ def assert_frozen_prospective_contract() -> None:
     ):
         raise RuntimeError("frozen candidate/model-definition commit was altered")
     if FROZEN_HISTORICAL_CACHE_SHA256 != (
-        "d4ca191ccc57e54c56f46497f09240b3e7f2d80f66dc2c41fe635825d035dd8f"
+        "9eb473051e1d2c827990d802ea7d996684f48d3377c8da7e34db051adfc3bcab"
     ):
         raise RuntimeError("frozen historical MoneyPuck cache SHA-256 was altered")
     if FROZEN_TRAINING_SEASONS != (20212022, 20222023, 20232024, 20242025, 20252026):
@@ -150,14 +150,14 @@ def assert_frozen_prospective_contract() -> None:
     if MIN_PRIOR_GAMES != 5:
         raise RuntimeError("frozen min-prior-games must remain 5")
     if EXPECTED_FITTED_ARTIFACT_SHA256 != (
-        "1739c7edf14ecd23ab3e94b54ef9194a2d868026ceb320663a85fb9a292aac28"
+        "763ef69cce4e414b926546fee09e7a66ff54eab41d695f499f01795f150238df"
     ):
         raise RuntimeError("expected fitted artifact SHA-256 was altered")
     if EXPECTED_TRAINING_ROW_IDENTITY_SHA256 != (
-        "743373bdbb31e22cc5f188402cc736808f7cac9515bf53f5ee88a058dbff168c"
+        "f1847cc7808bc081790755b8d10034bc300f058956095a7842f0719f0b8c2719"
     ):
         raise RuntimeError("expected training-row identity SHA-256 was altered")
-    if EXPECTED_FROZEN_TRAINING_ROW_COUNT != 5991:
+    if EXPECTED_FROZEN_TRAINING_ROW_COUNT != 6469:
         raise RuntimeError("expected frozen training-row count was altered")
 
 
@@ -536,7 +536,7 @@ def assert_canonical_frozen_artifact(artifact: FrozenFittedArtifact) -> FrozenFi
         raise PredictionError("Committed frozen artifact columns drifted from the freeze")
     if artifact.training_row_count != EXPECTED_FROZEN_TRAINING_ROW_COUNT:
         raise PredictionError(
-            "Committed frozen artifact training-row count is not the frozen 5,991-row identity"
+            "Committed frozen artifact training-row count is not the frozen 6,469-row identity"
         )
     if artifact.training_row_identity_sha256 != EXPECTED_TRAINING_ROW_IDENTITY_SHA256:
         raise PredictionError(

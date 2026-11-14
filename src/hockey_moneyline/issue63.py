@@ -245,7 +245,7 @@ def build_issue63_receipt_report() -> dict[str, Any]:
     if artifact.fitted_artifact_sha256 != EXPECTED_FITTED_ARTIFACT_SHA256:
         blockers.append("committed frozen artifact hash drifted")
     if artifact.fitted_artifact_sha256 != (
-        "1739c7edf14ecd23ab3e94b54ef9194a2d868026ceb320663a85fb9a292aac28"
+        "763ef69cce4e414b926546fee09e7a66ff54eab41d695f499f01795f150238df"
     ):
         blockers.append("frozen fitted artifact SHA-256 changed")
 

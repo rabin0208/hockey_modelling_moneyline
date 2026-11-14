@@ -1,0 +1,160 @@
+{
+  "moneypuck_cache_sha256": "9eb473051e1d2c827990d802ea7d996684f48d3377c8da7e34db051adfc3bcab",
+  "old_frozen_cache_sha256": "d4ca191ccc57e54c56f46497f09240b3e7f2d80f66dc2c41fe635825d035dd8f",
+  "shootout_resolved_development": 475,
+  "baseline_eligible_rows": 5991,
+  "with_so_eligible_rows": 6469,
+  "baseline_folds": {
+    "fold_a": {
+      "n": 1217,
+      "home_win_rate": 0.5316351684470009,
+      "accuracy": 0.6253081347576006,
+      "log_loss": 0.657806330989556,
+      "brier": 0.2322661882247229,
+      "mean_predicted_home_win": 0.52179680962338,
+      "roc_auc": 0.6587515930475338,
+      "calibration": {
+        "ece": 0.0409089071257119,
+        "n_bins": 10
+      }
+    },
+    "fold_b": {
+      "n": 1230,
+      "home_win_rate": 0.5382113821138211,
+      "accuracy": 0.5975609756097561,
+      "log_loss": 0.6697709427247478,
+      "brier": 0.23817748235796954,
+      "mean_predicted_home_win": 0.5064659580889576,
+      "roc_auc": 0.6320741670567209,
+      "calibration": {
+        "ece": 0.05094505946489359,
+        "n_bins": 10
+      }
+    },
+    "fold_c": {
+      "n": 1230,
+      "home_win_rate": 0.5642276422764227,
+      "accuracy": 0.5845528455284553,
+      "log_loss": 0.6719926046251907,
+      "brier": 0.2395574927933019,
+      "mean_predicted_home_win": 0.5275849018982467,
+      "roc_auc": 0.6123623596713837,
+      "calibration": {
+        "ece": 0.050902202815384615,
+        "n_bins": 10
+      }
+    },
+    "fold_d": {
+      "n": 1193,
+      "home_win_rate": 0.5272422464375524,
+      "accuracy": 0.537300922045264,
+      "log_loss": 0.6905280780535353,
+      "brier": 0.24852617588230616,
+      "mean_predicted_home_win": 0.5598508975357017,
+      "roc_auc": 0.5725991949396204,
+      "calibration": {
+        "ece": 0.06471275403883181,
+        "n_bins": 10
+      }
+    }
+  },
+  "with_so_folds": {
+    "fold_a": {
+      "n": 1312,
+      "home_win_rate": 0.5236280487804879,
+      "accuracy": 0.6128048780487805,
+      "log_loss": 0.6621287264759521,
+      "brier": 0.23470499519428673,
+      "mean_predicted_home_win": 0.5228178075648167,
+      "roc_auc": 0.6457595342066957,
+      "calibration": {
+        "ece": 0.04045272874699302,
+        "n_bins": 10
+      }
+    },
+    "fold_b": {
+      "n": 1312,
+      "home_win_rate": 0.5411585365853658,
+      "accuracy": 0.586890243902439,
+      "log_loss": 0.6700436750349447,
+      "brier": 0.2385039316438581,
+      "mean_predicted_home_win": 0.4966512755188181,
+      "roc_auc": 0.6295774647887324,
+      "calibration": {
+        "ece": 0.04868262412807351,
+        "n_bins": 10
+      }
+    },
+    "fold_c": {
+      "n": 1307,
+      "home_win_rate": 0.5623565416985463,
+      "accuracy": 0.5837796480489671,
+      "log_loss": 0.6695797870103436,
+      "brier": 0.2385792088942343,
+      "mean_predicted_home_win": 0.5324908664063454,
+      "roc_auc": 0.6086080586080586,
+      "calibration": {
+        "ece": 0.030962467427552504,
+        "n_bins": 10
+      }
+    },
+    "fold_d": {
+      "n": 1312,
+      "home_win_rate": 0.5221036585365854,
+      "accuracy": 0.5297256097560976,
+      "log_loss": 0.6971483790705254,
+      "brier": 0.2516663439964668,
+      "mean_predicted_home_win": 0.5618470237594381,
+      "roc_auc": 0.5556409271353566,
+      "calibration": {
+        "ece": 0.0677794290346483,
+        "n_bins": 10
+      }
+    }
+  },
+  "baseline_macro": {
+    "n_folds": 4,
+    "accuracy": 0.5861807194852691,
+    "roc_auc": 0.6189468286788147,
+    "log_loss": 0.6725244890982575,
+    "brier": 0.23963183481457515,
+    "ece": 0.05186723086120548
+  },
+  "with_so_macro": {
+    "n_folds": 4,
+    "accuracy": 0.5783000949390711,
+    "roc_auc": 0.6098964961847109,
+    "log_loss": 0.6747251418979415,
+    "brier": 0.2408636199322115,
+    "ece": 0.04696931233431684
+  },
+  "fold_d_common": {
+    "n": 1193,
+    "baseline": {
+      "n": 1193,
+      "home_win_rate": 0.5272422464375524,
+      "accuracy": 0.537300922045264,
+      "log_loss": 0.6905280780535353,
+      "brier": 0.24852617588230616,
+      "mean_predicted_home_win": 0.5598508975357017,
+      "roc_auc": 0.5725991949396204,
+      "calibration": {
+        "ece": 0.06471275403883181,
+        "n_bins": 10
+      }
+    },
+    "with_so": {
+      "n": 1193,
+      "home_win_rate": 0.5272422464375524,
+      "accuracy": 0.5381391450125733,
+      "log_loss": 0.6901743538579962,
+      "brier": 0.24838639282891387,
+      "mean_predicted_home_win": 0.5626456714634698,
+      "roc_auc": 0.5714350144888317,
+      "calibration": {
+        "ece": 0.05965460946094256,
+        "n_bins": 10
+      }
+    }
+  }
+}

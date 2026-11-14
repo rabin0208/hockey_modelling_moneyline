@@ -206,6 +206,7 @@ def build_features(games: Sequence[NormalizedGame]) -> list[dict[str, Any]]:
                 elo_ratings[game.home_team_id],
                 elo_ratings[game.away_team_id],
                 bool(game.home_win),
+                decided_in_shootout=bool(game.decided_in_shootout),
             )
             elo_ratings[game.home_team_id] = new_home_elo
             elo_ratings[game.away_team_id] = new_away_elo

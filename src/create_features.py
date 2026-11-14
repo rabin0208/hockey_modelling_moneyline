@@ -39,6 +39,12 @@ from hockey_moneyline.schedule_load import (
     ScheduleHistoryGame,
     schedule_history_from_moneypuck_csv,
 )
+from hockey_moneyline.shootout_winners import (
+    DEFAULT_SHOOTOUT_CACHE,
+    ensure_shootout_winners,
+    home_win_by_game_id,
+    list_tied_moneypuck_games,
+)
 from hockey_moneyline.unscored_target import (
     UnscoredTarget,
     build_unscored_frozen_feature_snapshot,
@@ -158,22 +164,41 @@ def load_source(
         return _SOURCE
 
     print(f"Loading MoneyPuck games from {path}...")
+    so_seasons = tuple(CYCLE2_DEVELOPMENT_SEASONS) + (CURRENT_SEASON,)
+    tied = list_tied_moneypuck_games(path, seasons=so_seasons)
+    so_resolved = ensure_shootout_winners(
+        tied,
+        cache_path=PROJECT_ROOT / DEFAULT_SHOOTOUT_CACHE,
+        fetch_missing=True,
+    )
+    so_home_wins = home_win_by_game_id(so_resolved)
+    print(
+        f"  Shootout join: {len(so_resolved)}/{len(tied)} tied MoneyPuck games "
+        f"resolved via NHL (cache {PROJECT_ROOT / DEFAULT_SHOOTOUT_CACHE})"
+    )
     inspection = inspect_advanced_stats_csv_for_cycle2_development(
         path,
         CYCLE2_DEVELOPMENT_SEASONS,
+        shootout_winners=so_home_wins,
     )
     schedule = schedule_history_from_moneypuck_csv(path, seasons=CYCLE2_DEVELOPMENT_SEASONS)
     development_rows = eligible_frozen_training_rows(
         build_frozen_training_rows(inspection.games, inspection.records, schedule)
     )
-    current = parse_current_season_moneypuck_csv(path, season=CURRENT_SEASON)
+    current = parse_current_season_moneypuck_csv(
+        path,
+        season=CURRENT_SEASON,
+        shootout_winners=so_home_wins,
+    )
     games = list(inspection.games) + list(current.winner_labeled)
     records = dict(inspection.records)
     records.update(current.xgoal_records)
     full_schedule = list(schedule) + list(current.schedule_history)
+    so_in_history = sum(1 for game in games if game.decided_in_shootout)
     print(
         f"  {len(inspection.games)} development games, "
-        f"{len(current.winner_labeled)} current-season games with a winner, "
+        f"{len(current.winner_labeled)} current-season games with a winner "
+        f"({so_in_history} decided in shootout), "
         f"{len(development_rows)} eligible development rows"
     )
     _SOURCE = FeatureSource(games, records, full_schedule, development_rows)

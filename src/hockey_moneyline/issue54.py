@@ -571,10 +571,10 @@ def build_issue54_readiness_report(
             "model_parameters_changed": False,
             "feature_protocol_changed": False,
             "fitted_artifact_sha256": (
-                "1739c7edf14ecd23ab3e94b54ef9194a2d868026ceb320663a85fb9a292aac28"
+                "763ef69cce4e414b926546fee09e7a66ff54eab41d695f499f01795f150238df"
             ),
             "training_row_identity_sha256": (
-                "743373bdbb31e22cc5f188402cc736808f7cac9515bf53f5ee88a058dbff168c"
+                "f1847cc7808bc081790755b8d10034bc300f058956095a7842f0719f0b8c2719"
             ),
             "2026_27_outcomes_used_for_fitting_tuning_or_selection": False,
         },

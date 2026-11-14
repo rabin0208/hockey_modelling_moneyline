@@ -43,7 +43,7 @@ ISSUE83_FILE_METADATA_COMMENT = "5915172121"
 DEFAULT_OUTPUT = Path("data/derived/issue84_forward_odds_archive_report.json")
 DEFAULT_PROOF_STORE = Path("data/derived/odds_archive/forward/issue84_proof_snapshots.jsonl")
 FROZEN_FITTED_ARTIFACT_SHA256 = (
-    "1739c7edf14ecd23ab3e94b54ef9194a2d868026ceb320663a85fb9a292aac28"
+    "763ef69cce4e414b926546fee09e7a66ff54eab41d695f499f01795f150238df"
 )
 
 # Screenshot files do not encode a UTC offset. Comment 5915172121 records the

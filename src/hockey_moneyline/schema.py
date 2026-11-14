@@ -68,6 +68,8 @@ class NormalizedGame:
     scheduled_start_time_utc: datetime | None = None
     game_state: str | None = None
     game_schedule_state: str | None = None
+    # MoneyPuck situation=all stays tied after a shootout; NHL supplies home_win.
+    decided_in_shootout: bool = False
 
     @property
     def season_id(self) -> int:
@@ -138,14 +140,22 @@ def game_from_mapping(row: Mapping[str, Any]) -> NormalizedGame:
     if home_score < 0 or away_score < 0:
         raise SchemaError("Scores must be non-negative")
 
-    expected = home_win_from_scores(home_score, away_score)
+    decided_in_shootout = bool(row.get("decided_in_shootout"))
     home_win = int(row["home_win"])
     if home_win not in (0, 1):
         raise SchemaError(f"home_win must be 0 or 1, got {home_win!r}")
-    if home_win != expected:
-        raise SchemaError(
-            f"home_win {home_win} does not match scores {home_score}-{away_score}"
-        )
+    if decided_in_shootout:
+        if home_score != away_score:
+            raise SchemaError(
+                "Shootout-decided games must keep tied MoneyPuck regulation/OT scores; "
+                f"got {home_score}-{away_score}"
+            )
+    else:
+        expected = home_win_from_scores(home_score, away_score)
+        if home_win != expected:
+            raise SchemaError(
+                f"home_win {home_win} does not match scores {home_score}-{away_score}"
+            )
 
     home_team_id = str(row["home_team_id"])
     away_team_id = str(row["away_team_id"])
@@ -186,6 +196,7 @@ def game_from_mapping(row: Mapping[str, Any]) -> NormalizedGame:
             if row.get("game_schedule_state") not in (None, "")
             else None
         ),
+        decided_in_shootout=decided_in_shootout,
     )
 
 
