@@ -89,7 +89,7 @@ DEFAULT_CYCLE2_SCHEDULE_LOAD_OUTPUT = Path(
 )
 # Same MoneyPuck cache identity recorded by Issue #32 / Issue #34.
 KNOWN_CYCLE2_MONEYPUCK_SHA256 = (
-    "d4ca191ccc57e54c56f46497f09240b3e7f2d80f66dc2c41fe635825d035dd8f"
+    "9eb473051e1d2c827990d802ea7d996684f48d3377c8da7e34db051adfc3bcab"
 )
 
 CARRY_FORWARD_DECISION = "carry forward Cycle-2 schedule-load candidate"

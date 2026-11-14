@@ -13,16 +13,37 @@ from collections import defaultdict, deque
 from dataclasses import dataclass, field
 from typing import Any, Mapping, Sequence
 
-from hockey_moneyline.elo import ELO_FEATURE_COLUMN, ELO_INITIAL, updated_ratings
+from hockey_moneyline.elo import (
+    ELO_FEATURE_COLUMN,
+    EloEvent,
+    ratings_from_events,
+)
 from hockey_moneyline.errors import FeatureError
 from hockey_moneyline.linear_recency import LINEAR_RECENCY_COLUMNS, linear_recency_win_rate
 from hockey_moneyline.ordered_lags import ORDERED_LAG_COLUMNS, ORDERED_LAG_COUNT
-from hockey_moneyline.provenance import RECENT_FORM_WINDOW
+from hockey_moneyline.provenance import (
+    RECENT_FORM_WINDOW,
+    seasons_in_prior_window,
+)
 from hockey_moneyline.schema import FEATURE_COLUMNS, NormalizedGame, validate_games
+
+# Last-10 OT-or-SO appearance rate and win counts (replaces shootout-only rate).
+EXTRA_TIME_RECENCY_FEATURE_COLUMNS = (
+    "home_recent_extra_time_rate",
+    "away_recent_extra_time_rate",
+    "home_recent_extra_time_wins",
+    "away_recent_extra_time_wins",
+)
+
+# Exact linear transforms of GF/GA per game; dropped from the SO model family.
+REDUNDANT_GOAL_DIFF_COLUMNS = (
+    "home_goal_diff_per_game",
+    "away_goal_diff_per_game",
+)
 
 
 @dataclass
-class TeamState:
+class SeasonBucket:
     games: int = 0
     wins: int = 0
     goals_for: int = 0
@@ -31,35 +52,75 @@ class TeamState:
     home_wins: int = 0
     away_games: int = 0
     away_wins: int = 0
+
+
+@dataclass
+class TeamState:
+    season_buckets: dict[int, SeasonBucket] = field(default_factory=dict)
     season: int | None = None
-    season_games: int = 0
-    season_wins: int = 0
     recent_results: deque[int] = field(default_factory=lambda: deque(maxlen=RECENT_FORM_WINDOW))
+    recent_extra_time: deque[int] = field(
+        default_factory=lambda: deque(maxlen=RECENT_FORM_WINDOW)
+    )
+    recent_extra_time_wins: deque[int] = field(
+        default_factory=lambda: deque(maxlen=RECENT_FORM_WINDOW)
+    )
+
+    def _window_totals(self, current_season: int) -> SeasonBucket:
+        allowed = seasons_in_prior_window(current_season)
+        total = SeasonBucket()
+        for season_id, bucket in self.season_buckets.items():
+            if allowed is not None and season_id not in allowed:
+                continue
+            total.games += bucket.games
+            total.wins += bucket.wins
+            total.goals_for += bucket.goals_for
+            total.goals_against += bucket.goals_against
+            total.home_games += bucket.home_games
+            total.home_wins += bucket.home_wins
+            total.away_games += bucket.away_games
+            total.away_wins += bucket.away_wins
+        return total
 
     def snapshot(self, current_season: int) -> dict[str, float | None]:
-        win_rate = (self.wins / self.games) if self.games else 0.5
-        gf = (self.goals_for / self.games) if self.games else 0.0
-        ga = (self.goals_against / self.games) if self.games else 0.0
-        same_season = self.season == current_season
-        season_games = self.season_games if same_season else 0
-        season_wins = self.season_wins if same_season else 0
+        totals = self._window_totals(current_season)
+        win_rate = (totals.wins / totals.games) if totals.games else 0.5
+        gf = (totals.goals_for / totals.games) if totals.games else 0.0
+        ga = (totals.goals_against / totals.games) if totals.games else 0.0
+        current_bucket = self.season_buckets.get(current_season)
+        season_games = current_bucket.games if current_bucket is not None else 0
+        season_wins = current_bucket.wins if current_bucket is not None else 0
         recent = (
             sum(self.recent_results) / len(self.recent_results)
             if self.recent_results
             else 0.5
         )
+        recent_extra = (
+            sum(self.recent_extra_time) / len(self.recent_extra_time)
+            if self.recent_extra_time
+            else 0.0
+        )
+        recent_extra_wins = (
+            float(sum(self.recent_extra_time_wins)) if self.recent_extra_time_wins else 0.0
+        )
         payload: dict[str, float | None] = {
-            "prior_games": float(self.games),
+            "prior_games": float(totals.games),
             "win_rate": win_rate,
             "goals_for_per_game": gf,
             "goals_against_per_game": ga,
             "goal_diff_per_game": gf - ga,
-            "home_win_rate": (self.home_wins / self.home_games) if self.home_games else 0.5,
-            "away_win_rate": (self.away_wins / self.away_games) if self.away_games else 0.5,
+            "home_win_rate": (
+                (totals.home_wins / totals.home_games) if totals.home_games else 0.5
+            ),
+            "away_win_rate": (
+                (totals.away_wins / totals.away_games) if totals.away_games else 0.5
+            ),
             "season_games": float(season_games),
             "season_win_rate": (season_wins / season_games) if season_games else 0.5,
             "recent_win_rate": recent,
             "recent_win_rate_linear10": linear_recency_win_rate(self.recent_results),
+            "recent_extra_time_rate": recent_extra,
+            "recent_extra_time_wins": recent_extra_wins,
         }
         for lag in range(1, ORDERED_LAG_COUNT + 1):
             if len(self.recent_results) >= lag:
@@ -69,24 +130,33 @@ class TeamState:
                 payload[f"result_lag_{lag}"] = None
         return payload
 
-    def update(self, *, won: bool, goals_for: int, goals_against: int, is_home: bool, season: int) -> None:
-        if self.season != season:
-            self.season = season
-            self.season_games = 0
-            self.season_wins = 0
-        self.games += 1
-        self.wins += int(won)
-        self.goals_for += goals_for
-        self.goals_against += goals_against
-        self.season_games += 1
-        self.season_wins += int(won)
+    def update(
+        self,
+        *,
+        won: bool,
+        goals_for: int,
+        goals_against: int,
+        is_home: bool,
+        season: int,
+        decided_in_shootout: bool = False,
+        decided_in_overtime: bool = False,
+    ) -> None:
+        self.season = season
+        bucket = self.season_buckets.setdefault(season, SeasonBucket())
+        bucket.games += 1
+        bucket.wins += int(won)
+        bucket.goals_for += goals_for
+        bucket.goals_against += goals_against
         self.recent_results.append(int(won))
+        went_extra = bool(decided_in_overtime or decided_in_shootout)
+        self.recent_extra_time.append(int(went_extra))
+        self.recent_extra_time_wins.append(int(went_extra and won))
         if is_home:
-            self.home_games += 1
-            self.home_wins += int(won)
+            bucket.home_games += 1
+            bucket.home_wins += int(won)
         else:
-            self.away_games += 1
-            self.away_wins += int(won)
+            bucket.away_games += 1
+            bucket.away_wins += int(won)
 
 
 def _feature_row(
@@ -129,6 +199,10 @@ def _feature_row(
         "away_recent_win_rate": away["recent_win_rate"],
         "home_recent_win_rate_linear10": home["recent_win_rate_linear10"],
         "away_recent_win_rate_linear10": away["recent_win_rate_linear10"],
+        "home_recent_extra_time_rate": home["recent_extra_time_rate"],
+        "away_recent_extra_time_rate": away["recent_extra_time_rate"],
+        "home_recent_extra_time_wins": home["recent_extra_time_wins"],
+        "away_recent_extra_time_wins": away["recent_extra_time_wins"],
         ELO_FEATURE_COLUMN: home_elo - away_elo,
     }
     for lag in range(1, ORDERED_LAG_COUNT + 1):
@@ -155,7 +229,7 @@ def assert_ordered5_lags_complete(rows: Sequence[Mapping[str, Any]]) -> None:
 def build_features(games: Sequence[NormalizedGame]) -> list[dict[str, Any]]:
     ordered = validate_games(games)
     states: dict[str, TeamState] = defaultdict(TeamState)
-    elo_ratings: dict[str, float] = defaultdict(lambda: ELO_INITIAL)
+    elo_events: list[EloEvent] = []
     rows: list[dict[str, Any]] = []
     required_columns = (
         FEATURE_COLUMNS
@@ -171,6 +245,10 @@ def build_features(games: Sequence[NormalizedGame]) -> list[dict[str, Any]]:
         while index < len(ordered) and ordered[index].game_date == current_date:
             day_games.append(ordered[index])
             index += 1
+
+        # Rebuild windowed Elo once per slate date (same history for all games).
+        day_season = day_games[0].season
+        elo_ratings = ratings_from_events(elo_events, day_season)
 
         for game in day_games:
             home_state = states[game.home_team_id]
@@ -188,12 +266,16 @@ def build_features(games: Sequence[NormalizedGame]) -> list[dict[str, Any]]:
             rows.append(row)
 
         for game in day_games:
+            so = bool(game.decided_in_shootout)
+            ot = bool(game.decided_in_overtime)
             states[game.home_team_id].update(
                 won=bool(game.home_win),
                 goals_for=game.home_score,
                 goals_against=game.away_score,
                 is_home=True,
                 season=game.season,
+                decided_in_shootout=so,
+                decided_in_overtime=ot,
             )
             states[game.away_team_id].update(
                 won=not bool(game.home_win),
@@ -201,14 +283,18 @@ def build_features(games: Sequence[NormalizedGame]) -> list[dict[str, Any]]:
                 goals_against=game.home_score,
                 is_home=False,
                 season=game.season,
+                decided_in_shootout=so,
+                decided_in_overtime=ot,
             )
-            new_home_elo, new_away_elo = updated_ratings(
-                elo_ratings[game.home_team_id],
-                elo_ratings[game.away_team_id],
-                bool(game.home_win),
+            elo_events.append(
+                EloEvent(
+                    season=game.season,
+                    home_team_id=game.home_team_id,
+                    away_team_id=game.away_team_id,
+                    home_won=bool(game.home_win),
+                    decided_in_shootout=so,
+                )
             )
-            elo_ratings[game.home_team_id] = new_home_elo
-            elo_ratings[game.away_team_id] = new_away_elo
     return rows
 
 

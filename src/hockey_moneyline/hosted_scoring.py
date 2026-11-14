@@ -134,8 +134,11 @@ class HostedGameScore:
                 raise HostedScoringError("hosted scoring artifact SHA-256 drifted")
             if self.feature_columns != tuple(FROZEN_FEATURE_COLUMNS):
                 raise HostedScoringError("hosted scoring feature order drifted")
-            if len(self.feature_columns) != 25:
-                raise HostedScoringError("hosted scoring must expose exactly 25 feature columns")
+            if len(self.feature_columns) != len(FROZEN_FEATURE_COLUMNS):
+                raise HostedScoringError(
+                    "hosted scoring must expose exactly "
+                    f"{len(FROZEN_FEATURE_COLUMNS)} feature columns"
+                )
             if not self.feature_vector_sha256:
                 raise HostedScoringError("scored hosted game requires feature-vector SHA-256")
             if not self.current_season_prior_source_sha256:
@@ -655,8 +658,13 @@ def score_hosted_refresh_bundle(
             moneypuck_retrieved_at_utc=retrieved,
             games=games,
         )
-    if artifact.feature_columns != tuple(FROZEN_FEATURE_COLUMNS) or len(artifact.feature_columns) != 25:
-        reason = "committed frozen artifact feature order does not match the 25-column freeze"
+    if artifact.feature_columns != tuple(FROZEN_FEATURE_COLUMNS) or len(
+        artifact.feature_columns
+    ) != len(FROZEN_FEATURE_COLUMNS):
+        reason = (
+            "committed frozen artifact feature order does not match the "
+            f"{len(FROZEN_FEATURE_COLUMNS)}-column freeze"
+        )
         games = tuple(
             _not_scored(
                 target,

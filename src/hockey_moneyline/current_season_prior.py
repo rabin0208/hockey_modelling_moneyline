@@ -165,12 +165,16 @@ def parse_current_season_moneypuck_rows(
     rows: Iterable[Mapping[str, Any]] | None,
     *,
     season: int = CURRENT_SEASON,
+    shootout_winners: Mapping[str, int] | None = None,
 ) -> CurrentSeasonMoneyPuckParse:
     """Parse approved MoneyPuck current-season rows. Empty material is allowed.
 
     Emptiness here is not proof of a valid empty prior state; NHL schedule/status
     evidence must still verify that no eligible completed regular-season games
     existed before the cutoff.
+
+    Tied MoneyPuck situation=all rows become winner-labeled when
+    ``shootout_winners`` supplies the NHL final home_win for that game_id.
     """
 
     if rows is None:
@@ -179,6 +183,7 @@ def parse_current_season_moneypuck_rows(
             "absent provider payload as a verified empty state"
         )
 
+    so_wins = dict(shootout_winners or {})
     selected_year = str(CURRENT_SEASON_MONEYPUCK_YEAR)
     homes: dict[str, Mapping[str, Any]] = {}
     aways: dict[str, Mapping[str, Any]] = {}
@@ -279,10 +284,18 @@ def parse_current_season_moneypuck_rows(
                 raise CurrentSeasonPriorSourceError(
                     f"Conflicting HOME/AWAY scores for tied current-season game {game_id}"
                 )
-            tied_ids.append(game_id)
-            continue
-
-        mapped = _home_row_to_mapping(home_row, SOURCE_ID)
+            so_home_win = so_wins.get(game_id)
+            if so_home_win is None:
+                tied_ids.append(game_id)
+                continue
+            mapped = _home_row_to_mapping(
+                home_row,
+                SOURCE_ID,
+                home_win=int(so_home_win),
+                decided_in_shootout=True,
+            )
+        else:
+            mapped = _home_row_to_mapping(home_row, SOURCE_ID)
         _validate_away_row(game_id, mapped, away_row)
         game = game_from_mapping(mapped)
         if game.game_type != "regular":
@@ -330,6 +343,7 @@ def parse_current_season_moneypuck_csv(
     path: Path,
     *,
     season: int = CURRENT_SEASON,
+    shootout_winners: Mapping[str, int] | None = None,
 ) -> CurrentSeasonMoneyPuckParse:
     try:
         with path.open("r", encoding="utf-8", newline="") as handle:
@@ -347,7 +361,11 @@ def parse_current_season_moneypuck_csv(
                 raise CurrentSeasonPriorSourceError(
                     f"Current-season MoneyPuck file is missing columns {missing}"
                 )
-            return parse_current_season_moneypuck_rows(reader, season=season)
+            return parse_current_season_moneypuck_rows(
+                reader,
+                season=season,
+                shootout_winners=shootout_winners,
+            )
     except OSError as exc:
         raise CurrentSeasonPriorSourceError(
             f"Unreadable current-season MoneyPuck file {path}"

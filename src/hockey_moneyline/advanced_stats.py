@@ -18,7 +18,7 @@ from typing import Any, Iterable, Mapping, Sequence
 
 from hockey_moneyline.errors import FeatureError, SchemaError
 from hockey_moneyline.normalize import canonical_moneypuck_team_code, games_from_moneypuck_csv
-from hockey_moneyline.provenance import season_from_moneypuck_year
+from hockey_moneyline.provenance import season_from_moneypuck_year, seasons_in_prior_window
 from hockey_moneyline.schema import NormalizedGame, parse_game_date, validate_games
 
 ISSUE19_SEASONS = (20212022, 20222023, 20232024, 20242025)
@@ -185,6 +185,7 @@ def _coverage_report(
 def inspect_advanced_stats_csv(
     path: Path,
     seasons: Sequence[int] = ISSUE19_SEASONS,
+    shootout_winners: Mapping[str, int] | None = None,
 ) -> AdvancedInspection:
     """Inspect only Issue #19 development seasons from the canonical CSV.
 
@@ -202,7 +203,9 @@ def inspect_advanced_stats_csv(
             "Issue #19 advanced-stat inspection is restricted to 2021-22 through 2024-25; "
             "2025-26 and other seasons are not permitted"
         )
-    return _inspect_advanced_stats_selected(path, selected)
+    return _inspect_advanced_stats_selected(
+        path, selected, shootout_winners=shootout_winners
+    )
 
 
 def inspect_advanced_stats_csv_for_authorized_heldout(
@@ -210,6 +213,7 @@ def inspect_advanced_stats_csv_for_authorized_heldout(
     seasons: Sequence[int],
     *,
     confirm_consume_2025_26: bool,
+    shootout_winners: Mapping[str, int] | None = None,
 ) -> AdvancedInspection:
     """Gated Issue #19 join/timing inspection for the frozen heldout pathway.
 
@@ -228,7 +232,9 @@ def inspect_advanced_stats_csv_for_authorized_heldout(
             "Authorized heldout advanced-stat inspection requires exactly "
             "20212022,20222023,20232024,20242025,20252026"
         )
-    return _inspect_advanced_stats_selected(path, selected)
+    return _inspect_advanced_stats_selected(
+        path, selected, shootout_winners=shootout_winners
+    )
 
 
 CYCLE2_DEVELOPMENT_SEASONS = ISSUE19_SEASONS + (HELD_OUT_SEASON,)
@@ -238,6 +244,7 @@ RESERVED_FUTURE_SEASON = 20262027
 def inspect_advanced_stats_csv_for_cycle2_development(
     path: Path,
     seasons: Sequence[int],
+    shootout_winners: Mapping[str, int] | None = None,
 ) -> AdvancedInspection:
     """Cycle-2 development wrapper over the Issue #19 parse/join/timing primitive.
 
@@ -269,15 +276,20 @@ def inspect_advanced_stats_csv_for_cycle2_development(
             "Cycle-2 advanced-stat inspection requires exactly "
             "20212022,20222023,20232024,20242025,20252026"
         )
-    return _inspect_advanced_stats_selected(path, selected)
+    return _inspect_advanced_stats_selected(
+        path, selected, shootout_winners=shootout_winners
+    )
 
 
 def _inspect_advanced_stats_selected(
     path: Path,
     selected: Sequence[int],
+    shootout_winners: Mapping[str, int] | None = None,
 ) -> AdvancedInspection:
     selected = tuple(selected)
-    normalized = games_from_moneypuck_csv(path, seasons=selected)
+    normalized = games_from_moneypuck_csv(
+        path, seasons=selected, shootout_winners=shootout_winners
+    )
     games = normalized.games
     expected = _expected_team_keys(games)
     selected_raw = {str(int(str(season)[:4])) for season in selected}
@@ -630,6 +642,21 @@ def assert_corsi_source_ready(inspection: AdvancedInspection) -> dict[str, Any]:
     return payload
 
 
+def _aggregate_share_state(
+    season_state: Mapping[int, Mapping[str, float]],
+    current_season: int,
+) -> dict[str, float]:
+    allowed = seasons_in_prior_window(current_season)
+    total = {"for": 0.0, "against": 0.0, "games": 0.0}
+    for season_id, bucket in season_state.items():
+        if allowed is not None and season_id not in allowed:
+            continue
+        total["for"] += float(bucket["for"])
+        total["against"] += float(bucket["against"])
+        total["games"] += float(bucket["games"])
+    return total
+
+
 def _build_pregame_for_against_share_features(
     games: Sequence[NormalizedGame],
     records: Mapping[tuple[str, str], AdvancedTeamGame],
@@ -643,12 +670,12 @@ def _build_pregame_for_against_share_features(
 
     Same-day snapshots are emitted before any same-day state update. Only
     ``history.game_date < target.game_date`` contributes. Row-level percentage
-    fields are never read.
+    fields are never read. Career priors respect ``PRIOR_SEASON_WINDOW``.
     """
 
     ordered = validate_games(games)
-    state: dict[str, dict[str, float]] = defaultdict(
-        lambda: {"for": 0.0, "against": 0.0, "games": 0.0}
+    state: dict[str, dict[int, dict[str, float]]] = defaultdict(
+        lambda: defaultdict(lambda: {"for": 0.0, "against": 0.0, "games": 0.0})
     )
     rows: list[dict[str, Any]] = []
 
@@ -661,8 +688,8 @@ def _build_pregame_for_against_share_features(
             index += 1
 
         for game in day_games:
-            home = state[game.home_team_id]
-            away = state[game.away_team_id]
+            home = _aggregate_share_state(state[game.home_team_id], game.season)
+            away = _aggregate_share_state(state[game.away_team_id], game.season)
             rows.append(
                 {
                     "game_id": game.game_id,
@@ -691,7 +718,7 @@ def _build_pregame_for_against_share_features(
                         f"Game {game.game_id} team {team_id} lacks finite "
                         f"{for_field}/{against_field}"
                     )
-                team_state = state[team_id]
+                team_state = state[team_id][game.season]
                 team_state["for"] += float(for_value)
                 team_state["against"] += float(against_value)
                 team_state["games"] += 1.0
