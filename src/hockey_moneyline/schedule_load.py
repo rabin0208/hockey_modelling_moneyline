@@ -69,13 +69,58 @@ FUTURE_LOOKING_EXCLUDED = (
 
 @dataclass(frozen=True, slots=True)
 class ScheduleHistoryGame:
-    """Completed regular-season game identity needed for workload state only."""
+    """Regular-season game identity needed for workload state.
+
+    MoneyPuck rows are completed games. Live scoring may also include known
+    NHL calendar games that have not finished yet so fatigue features reflect
+    the scheduled slate (back-to-backs, games in the prior 7 days).
+    """
 
     game_id: str
     game_date: date
     season: int
     home_team_id: str
     away_team_id: str
+
+
+def merge_calendar_schedule_for_fatigue(
+    completed_schedule: Sequence[ScheduleHistoryGame],
+    calendar_games: Sequence[ScheduleHistoryGame],
+    *,
+    target_date: date,
+    season: int,
+) -> list[ScheduleHistoryGame]:
+    """Union completed history with known scheduled games before ``target_date``.
+
+    Completed MoneyPuck rows win on id conflicts when identities match.
+    Conflicting identities raise FeatureError. Returns an empty list when neither
+    source contributes a same-season prior game.
+    """
+
+    by_id: dict[str, ScheduleHistoryGame] = {}
+    for game in completed_schedule:
+        if game.season == season and game.game_date < target_date:
+            by_id[game.game_id] = game
+    for game in calendar_games:
+        if game.season != season or game.game_date >= target_date:
+            continue
+        existing = by_id.get(game.game_id)
+        if existing is None:
+            by_id[game.game_id] = game
+            continue
+        if (
+            existing.game_date != game.game_date
+            or existing.season != game.season
+            or existing.home_team_id != game.home_team_id
+            or existing.away_team_id != game.away_team_id
+        ):
+            raise FeatureError(
+                f"Calendar schedule game {game.game_id} disagrees with completed "
+                "schedule-history identity"
+            )
+    if not by_id:
+        return []
+    return validate_schedule_history(list(by_id.values()))
 
 
 def _truthy_playoff(value: Any) -> bool:

@@ -316,6 +316,7 @@ def score_pregame_prediction(
     schedule_history: Sequence[ScheduleHistoryGame],
     artifact: FrozenFittedArtifact | None = None,
     *,
+    calendar_schedule: Sequence[ScheduleHistoryGame] = (),
     current_season_prior_source_available: bool | None = None,
     source_versions: Mapping[str, Any] | None = None,
     min_prior_games: int = MIN_PRIOR_GAMES,
@@ -341,6 +342,7 @@ def score_pregame_prediction(
             completed_history,
             advanced_records,
             schedule_history,
+            calendar_schedule=calendar_schedule,
             min_prior_games=min_prior_games,
         )
     except FeatureError as exc:

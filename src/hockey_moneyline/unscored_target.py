@@ -21,7 +21,11 @@ from hockey_moneyline.features import TeamState
 from hockey_moneyline.nhl_api import NHLScheduleGame
 from hockey_moneyline.normalize import canonical_moneypuck_team_code
 from hockey_moneyline.provenance import MIN_PRIOR_GAMES
-from hockey_moneyline.schedule_load import ScheduleHistoryGame, validate_schedule_history
+from hockey_moneyline.schedule_load import (
+    ScheduleHistoryGame,
+    merge_calendar_schedule_for_fatigue,
+    validate_schedule_history,
+)
 from hockey_moneyline.schedule_load_ablation import (
     PLUS_XGOAL_PLUS_PRIOR_SCHEDULE_LOAD_COMPACT_FEATURE_COLUMNS,
     assert_prior_schedule_load_compact_contract,
@@ -339,18 +343,22 @@ def _validate_labeled_history_in_schedule(
 def _schedule_load_snapshot(
     target: UnscoredTarget,
     schedule_history: Sequence[ScheduleHistoryGame],
+    calendar_schedule: Sequence[ScheduleHistoryGame] = (),
 ) -> dict[str, float]:
-    ordered = validate_schedule_history(schedule_history)
+    """Build B2B / prior-7d from completed history plus known calendar games."""
+
+    ordered = merge_calendar_schedule_for_fatigue(
+        schedule_history,
+        calendar_schedule,
+        target_date=target.game_date,
+        season=target.season,
+    )
 
     def team_dates(team_id: str) -> list[date]:
         return [
             game.game_date
             for game in ordered
-            if (
-                game.season == target.season
-                and game.game_date < target.game_date
-                and team_id in (game.home_team_id, game.away_team_id)
-            )
+            if team_id in (game.home_team_id, game.away_team_id)
         ]
 
     def side(team_id: str) -> tuple[float, float]:
@@ -380,9 +388,10 @@ def build_unscored_frozen_feature_snapshot(
     advanced_records: Mapping[tuple[str, str], AdvancedTeamGame],
     schedule_history: Sequence[ScheduleHistoryGame],
     *,
+    calendar_schedule: Sequence[ScheduleHistoryGame] = (),
     min_prior_games: int = MIN_PRIOR_GAMES,
 ) -> FrozenFeatureSnapshot:
-    """Emit the exact frozen 25 values from completed prior history only."""
+    """Emit the frozen 25 values from completed priors plus optional calendar fatigue."""
 
     assert_prior_schedule_load_compact_contract()
     if len(FROZEN_ISSUE40_FEATURE_COLUMNS) != 25:
@@ -402,7 +411,13 @@ def build_unscored_frozen_feature_snapshot(
         )
 
     row.update(_xgoal_snapshot(target, ordered, advanced_records))
-    row.update(_schedule_load_snapshot(target, schedule_ordered))
+    row.update(
+        _schedule_load_snapshot(
+            target,
+            schedule_ordered,
+            calendar_schedule=calendar_schedule,
+        )
+    )
 
     missing = [
         column for column in FROZEN_ISSUE40_FEATURE_COLUMNS if column not in row

@@ -10,7 +10,7 @@ against the same rows.
 from __future__ import annotations
 
 import sys
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 
 import pandas as pd
@@ -26,7 +26,8 @@ from hockey_moneyline.current_season_prior import (
     CURRENT_SEASON,
     parse_current_season_moneypuck_csv,
 )
-from hockey_moneyline.errors import FeatureError, SchemaError
+from hockey_moneyline.errors import FeatureError, NHLApiError, SchemaError
+from hockey_moneyline.nhl_api import fetch_schedule
 from hockey_moneyline.normalize import canonical_moneypuck_team_code
 from hockey_moneyline.prospective_artifact import (
     FROZEN_FEATURE_COLUMNS,
@@ -35,12 +36,16 @@ from hockey_moneyline.prospective_artifact import (
 )
 from hockey_moneyline.schedule_load import (
     CYCLE2_DEVELOPMENT_SEASONS,
+    ScheduleHistoryGame,
     schedule_history_from_moneypuck_csv,
 )
 from hockey_moneyline.unscored_target import (
     UnscoredTarget,
     build_unscored_frozen_feature_snapshot,
 )
+
+# Matches the compact schedule-load feature window (games_prior_7d / B2B).
+CALENDAR_FATIGUE_LOOKBACK_DAYS = 7
 
 CACHE_DIR = PROJECT_ROOT / "data" / "cache" / "moneypuck"
 OUTPUT_PATH = PROJECT_ROOT / "data" / "game_features.csv"
@@ -251,6 +256,47 @@ def feature_frame(source: FeatureSource | None = None) -> pd.DataFrame:
     return frame
 
 
+def calendar_schedule_for_fatigue(
+    game_date: date,
+    season: int,
+    *,
+    lookback_days: int = CALENDAR_FATIGUE_LOOKBACK_DAYS,
+) -> list[ScheduleHistoryGame]:
+    """Fetch known NHL regular-season games in the fatigue lookback window.
+
+    Includes scheduled games that have not finished yet, so B2B / prior-7d
+    reflect the calendar instead of waiting for MoneyPuck completion.
+    """
+
+    by_id: dict[str, ScheduleHistoryGame] = {}
+    for offset in range(1, lookback_days + 1):
+        day = game_date - timedelta(days=offset)
+        try:
+            snapshot = fetch_schedule(day)
+        except (NHLApiError, SchemaError, OSError):
+            continue
+        for nhl_game in snapshot.games:
+            if (
+                nhl_game.season != season
+                or nhl_game.game_type != "regular"
+                or nhl_game.game_date >= game_date
+            ):
+                continue
+            try:
+                home = canonical_moneypuck_team_code(nhl_game.home_team_abbrev, season)
+                away = canonical_moneypuck_team_code(nhl_game.away_team_abbrev, season)
+            except SchemaError:
+                continue
+            by_id[nhl_game.nhl_game_id] = ScheduleHistoryGame(
+                game_id=nhl_game.nhl_game_id,
+                game_date=nhl_game.game_date,
+                season=nhl_game.season,
+                home_team_id=home,
+                away_team_id=away,
+            )
+    return list(by_id.values())
+
+
 def features_for_game(game: dict, source: FeatureSource | None = None) -> dict | None:
     """Pregame 25-vector for one matchup. Completed results on that date are excluded."""
     source = source or load_source()
@@ -274,6 +320,7 @@ def features_for_game(game: dict, source: FeatureSource | None = None) -> dict |
 
     prior_games = [item for item in source.games if item.game_date < game_date]
     prior_schedule = [item for item in source.schedule if item.game_date < game_date]
+    calendar_schedule = calendar_schedule_for_fatigue(game_date, season)
     target = UnscoredTarget(
         game_id=str(game.get("game_id") or f"{game_date.isoformat()}-{home}-{away}"),
         game_date=game_date,
@@ -288,6 +335,7 @@ def features_for_game(game: dict, source: FeatureSource | None = None) -> dict |
             prior_games,
             source.records,
             prior_schedule,
+            calendar_schedule=calendar_schedule,
         )
     except FeatureError:
         return None

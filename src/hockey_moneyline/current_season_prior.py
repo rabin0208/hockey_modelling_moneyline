@@ -855,6 +855,40 @@ def build_current_season_prior_state(
     ordered_history = (
         tuple(validate_schedule_history(prior_history)) if prior_history else ()
     )
+    # Include known NHL calendar games that MoneyPuck has not completed yet so
+    # B2B / prior-7d fatigue features follow the schedule for live scoring.
+    if not empty_state_verified:
+        known_ids = {game.game_id for game in ordered_history}
+        calendar_extra: list[ScheduleHistoryGame] = []
+        for nhl_game in nhl_snapshot.games:
+            if (
+                nhl_game.season != CURRENT_SEASON
+                or nhl_game.game_type != "regular"
+                or nhl_game.game_date >= target.game_date
+                or nhl_game.nhl_game_id in known_ids
+            ):
+                continue
+            calendar_extra.append(
+                ScheduleHistoryGame(
+                    game_id=nhl_game.nhl_game_id,
+                    game_date=nhl_game.game_date,
+                    season=nhl_game.season,
+                    home_team_id=_canonical_team(
+                        nhl_game.home_team_abbrev,
+                        season=nhl_game.season,
+                        label="home",
+                    ),
+                    away_team_id=_canonical_team(
+                        nhl_game.away_team_abbrev,
+                        season=nhl_game.season,
+                        label="away",
+                    ),
+                )
+            )
+        if calendar_extra:
+            ordered_history = tuple(
+                validate_schedule_history(list(ordered_history) + calendar_extra)
+            )
     endpoint_paths = (nhl_snapshot.endpoint_path,)
     covered = tuple(sorted(nhl_snapshot.covered_dates))
     content = _content_fields(
