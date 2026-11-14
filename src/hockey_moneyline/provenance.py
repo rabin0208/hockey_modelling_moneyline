@@ -41,6 +41,25 @@ TEST_END_INCLUSIVE = "2026-06-30"
 
 RECENT_FORM_WINDOW = 10
 MIN_PRIOR_GAMES = 5
+# Career-style priors (win rate, GF/GA, xGoal share, …) use this many seasons
+# ending at the target game's season. None = all available history.
+PRIOR_SEASON_WINDOW: int | None = 4
+
+
+def seasons_in_prior_window(
+    current_season: int,
+    window: int | None = None,
+) -> frozenset[int] | None:
+    """Return season ids in the prior window, or None for unbounded history."""
+
+    active = PRIOR_SEASON_WINDOW if window is None else window
+    if active is None or active <= 0:
+        return None
+    start_year = int(current_season) // 10000
+    return frozenset(
+        (start_year - offset) * 10000 + (start_year - offset + 1)
+        for offset in range(int(active))
+    )
 
 USER_AGENT = "hockey-moneyline-issue-11-dev/0.4 (+https://github.com/EduardoRasanmar/hockey_moneyline)"
 

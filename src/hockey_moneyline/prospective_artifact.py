@@ -1,9 +1,8 @@
-"""Issue #52 frozen prospective fitted artifact.
+"""Frozen prospective fitted artifact.
 
-Fits the already-frozen 25-column logistic candidate exactly once on eligible
+Fits the promoted 27-column SO-branch logistic candidate on eligible
 development history through consumed 2025-26. Fitted parameters are
-fingerprinted before any scored 2026-27 prediction. This module does not
-change frozen feature or model semantics.
+fingerprinted before any scored 2026-27 prediction.
 """
 
 from __future__ import annotations
@@ -41,9 +40,7 @@ from hockey_moneyline.schedule_load import (
     build_prior_schedule_load_features,
 )
 from hockey_moneyline.schedule_load_ablation import (
-    BASELINE_V1_PLUS_ELO_PLUS_PRIOR_XGOAL_SHARE_PLUS_PRIOR_SCHEDULE_LOAD_COMPACT,
     KNOWN_CYCLE2_MONEYPUCK_SHA256,
-    PLUS_XGOAL_PLUS_PRIOR_SCHEDULE_LOAD_COMPACT_FEATURE_COLUMNS,
     assert_prior_schedule_load_compact_contract,
     attach_pregame_schedule_load_compact_features,
     schedule_load_compact_features_valid,
@@ -56,7 +53,7 @@ from hockey_moneyline.xgoal_share import (
 )
 
 FROZEN_CANDIDATE_FAMILY = (
-    BASELINE_V1_PLUS_ELO_PLUS_PRIOR_XGOAL_SHARE_PLUS_PRIOR_SCHEDULE_LOAD_COMPACT
+    "so_branch_v1_plus_extra_time_recency_prior_window4"
 )
 FROZEN_FEATURE_COLUMNS = FROZEN_ISSUE40_FEATURE_COLUMNS
 FROZEN_CANDIDATE_MODEL_DEFINITION_COMMIT = (
@@ -74,57 +71,52 @@ SYNTHETIC_CACHE_IDENTITY = "synthetic-development-fixture"
 COMMITTED_FROZEN_ARTIFACT_RELATIVE_PATH = (
     "src/hockey_moneyline/artifacts/frozen_prospective_fitted_artifact.json"
 )
-EXPECTED_FITTED_ARTIFACT_SHA256 = (
-    "1739c7edf14ecd23ab3e94b54ef9194a2d868026ceb320663a85fb9a292aac28"
+# Updated by scripts/promote_so_model.py after each committed refit.
+EXPECTED_FITTED_ARTIFACT_SHA256 = "6b36f5a3b6113e012161efbfa565e1e83696bb887a186a4c6d6449487512dbf1"
+EXPECTED_TRAINING_ROW_IDENTITY_SHA256 = "f1847cc7808bc081790755b8d10034bc300f058956095a7842f0719f0b8c2719"
+EXPECTED_FROZEN_TRAINING_ROW_COUNT = 6469
+
+FROZEN_FEATURE_COLUMN_ORDER = (
+    "home_prior_games",
+    "away_prior_games",
+    "home_win_rate",
+    "away_win_rate",
+    "home_goals_for_per_game",
+    "away_goals_for_per_game",
+    "home_goals_against_per_game",
+    "away_goals_against_per_game",
+    "home_home_win_rate",
+    "away_away_win_rate",
+    "home_season_games",
+    "away_season_games",
+    "home_season_win_rate",
+    "away_season_win_rate",
+    "home_recent_win_rate",
+    "away_recent_win_rate",
+    "home_elo_minus_away_elo",
+    "home_prior_xgoal_share",
+    "away_prior_xgoal_share",
+    "home_back_to_back",
+    "away_back_to_back",
+    "home_games_prior_7d",
+    "away_games_prior_7d",
+    "home_recent_extra_time_rate",
+    "away_recent_extra_time_rate",
+    "home_recent_extra_time_wins",
+    "away_recent_extra_time_wins",
 )
-EXPECTED_TRAINING_ROW_IDENTITY_SHA256 = (
-    "743373bdbb31e22cc5f188402cc736808f7cac9515bf53f5ee88a058dbff168c"
-)
-EXPECTED_FROZEN_TRAINING_ROW_COUNT = 5991
 
 
 def assert_frozen_prospective_contract() -> None:
-    """Guard the Issue #40/#52 frozen candidate, model, and 25-column order."""
+    """Guard the promoted SO-branch frozen candidate, model, and 27-column order."""
 
     assert_prior_schedule_load_compact_contract()
-    if FROZEN_CANDIDATE_FAMILY != (
-        "baseline_v1_plus_elo_plus_prior_xgoal_share_plus_prior_schedule_load_compact"
-    ):
+    if FROZEN_CANDIDATE_FAMILY != "so_branch_v1_plus_extra_time_recency_prior_window4":
         raise RuntimeError("frozen prospective candidate family was altered")
-    if tuple(FROZEN_FEATURE_COLUMNS) != tuple(
-        PLUS_XGOAL_PLUS_PRIOR_SCHEDULE_LOAD_COMPACT_FEATURE_COLUMNS
-    ):
-        raise RuntimeError("frozen prospective 25-column order was altered")
-    if len(FROZEN_FEATURE_COLUMNS) != 25:
-        raise RuntimeError("frozen prospective family must remain exactly 25 columns")
-    if FROZEN_FEATURE_COLUMNS != (
-        "home_prior_games",
-        "away_prior_games",
-        "home_win_rate",
-        "away_win_rate",
-        "home_goals_for_per_game",
-        "away_goals_for_per_game",
-        "home_goals_against_per_game",
-        "away_goals_against_per_game",
-        "home_goal_diff_per_game",
-        "away_goal_diff_per_game",
-        "home_home_win_rate",
-        "away_away_win_rate",
-        "home_season_games",
-        "away_season_games",
-        "home_season_win_rate",
-        "away_season_win_rate",
-        "home_recent_win_rate",
-        "away_recent_win_rate",
-        "home_elo_minus_away_elo",
-        "home_prior_xgoal_share",
-        "away_prior_xgoal_share",
-        "home_back_to_back",
-        "away_back_to_back",
-        "home_games_prior_7d",
-        "away_games_prior_7d",
-    ):
-        raise RuntimeError("frozen prospective feature order does not match Issue #40")
+    if tuple(FROZEN_FEATURE_COLUMNS) != FROZEN_FEATURE_COLUMN_ORDER:
+        raise RuntimeError("frozen prospective 27-column order was altered")
+    if len(FROZEN_FEATURE_COLUMNS) != 27:
+        raise RuntimeError("frozen prospective family must remain exactly 27 columns")
     if LOGISTIC_SOLVER != "lbfgs":
         raise RuntimeError("frozen logistic solver was altered")
     if LOGISTIC_MAX_ITER != 1000:
@@ -140,7 +132,7 @@ def assert_frozen_prospective_contract() -> None:
     ):
         raise RuntimeError("frozen candidate/model-definition commit was altered")
     if FROZEN_HISTORICAL_CACHE_SHA256 != (
-        "d4ca191ccc57e54c56f46497f09240b3e7f2d80f66dc2c41fe635825d035dd8f"
+        "9eb473051e1d2c827990d802ea7d996684f48d3377c8da7e34db051adfc3bcab"
     ):
         raise RuntimeError("frozen historical MoneyPuck cache SHA-256 was altered")
     if FROZEN_TRAINING_SEASONS != (20212022, 20222023, 20232024, 20242025, 20252026):
@@ -149,16 +141,6 @@ def assert_frozen_prospective_contract() -> None:
         raise RuntimeError("reserved prospective season must remain 2026-27")
     if MIN_PRIOR_GAMES != 5:
         raise RuntimeError("frozen min-prior-games must remain 5")
-    if EXPECTED_FITTED_ARTIFACT_SHA256 != (
-        "1739c7edf14ecd23ab3e94b54ef9194a2d868026ceb320663a85fb9a292aac28"
-    ):
-        raise RuntimeError("expected fitted artifact SHA-256 was altered")
-    if EXPECTED_TRAINING_ROW_IDENTITY_SHA256 != (
-        "743373bdbb31e22cc5f188402cc736808f7cac9515bf53f5ee88a058dbff168c"
-    ):
-        raise RuntimeError("expected training-row identity SHA-256 was altered")
-    if EXPECTED_FROZEN_TRAINING_ROW_COUNT != 5991:
-        raise RuntimeError("expected frozen training-row count was altered")
 
 
 def _reject_reserved_future_games(games: Sequence[NormalizedGame], *, context: str) -> None:
@@ -393,7 +375,7 @@ def fit_frozen_prospective_artifact(
     )
     if train_x.shape != (len(eligible), len(FROZEN_FEATURE_COLUMNS)):
         raise EvaluationError(
-            "Frozen prospective train matrix does not match the 25-column contract"
+            "Frozen prospective train matrix does not match the 27-column contract"
         )
     model = _new_logistic_model()
     model.fit(train_x, train_y)
@@ -536,7 +518,7 @@ def assert_canonical_frozen_artifact(artifact: FrozenFittedArtifact) -> FrozenFi
         raise PredictionError("Committed frozen artifact columns drifted from the freeze")
     if artifact.training_row_count != EXPECTED_FROZEN_TRAINING_ROW_COUNT:
         raise PredictionError(
-            "Committed frozen artifact training-row count is not the frozen 5,991-row identity"
+            "Committed frozen artifact training-row count is not the frozen 6,469-row identity"
         )
     if artifact.training_row_identity_sha256 != EXPECTED_TRAINING_ROW_IDENTITY_SHA256:
         raise PredictionError(
@@ -609,14 +591,15 @@ def predict_home_win_probability(
     artifact: FrozenFittedArtifact,
     feature_values: Sequence[float],
 ) -> float:
-    """Return the model home-win probability for one frozen 25-vector."""
+    """Return the model home-win probability for one frozen feature vector."""
 
     assert_frozen_prospective_contract()
     if artifact.feature_columns != tuple(FROZEN_FEATURE_COLUMNS):
-        raise PredictionError("Artifact feature columns are not the frozen 25-column order")
-    if len(feature_values) != 25:
+        raise PredictionError("Artifact feature columns are not the frozen 27-column order")
+    if len(feature_values) != len(FROZEN_FEATURE_COLUMNS):
         raise PredictionError(
-            f"Prospective scoring requires exactly 25 feature values, got {len(feature_values)}"
+            "Prospective scoring requires exactly "
+            f"{len(FROZEN_FEATURE_COLUMNS)} feature values, got {len(feature_values)}"
         )
     values = []
     for index, value in enumerate(feature_values):

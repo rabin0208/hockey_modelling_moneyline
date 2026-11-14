@@ -39,6 +39,17 @@ from hockey_moneyline.schedule_load import (
     ScheduleHistoryGame,
     schedule_history_from_moneypuck_csv,
 )
+from hockey_moneyline.period_outcomes import (
+    DEFAULT_PERIOD_CACHE,
+    annotate_period_outcomes,
+    ensure_period_outcomes,
+)
+from hockey_moneyline.shootout_winners import (
+    DEFAULT_SHOOTOUT_CACHE,
+    ensure_shootout_winners,
+    home_win_by_game_id,
+    list_tied_moneypuck_games,
+)
 from hockey_moneyline.unscored_target import (
     UnscoredTarget,
     build_unscored_frozen_feature_snapshot,
@@ -158,22 +169,56 @@ def load_source(
         return _SOURCE
 
     print(f"Loading MoneyPuck games from {path}...")
+    so_seasons = tuple(CYCLE2_DEVELOPMENT_SEASONS) + (CURRENT_SEASON,)
+    tied = list_tied_moneypuck_games(path, seasons=so_seasons)
+    so_resolved = ensure_shootout_winners(
+        tied,
+        cache_path=PROJECT_ROOT / DEFAULT_SHOOTOUT_CACHE,
+        fetch_missing=True,
+    )
+    so_home_wins = home_win_by_game_id(so_resolved)
+    print(
+        f"  Shootout join: {len(so_resolved)}/{len(tied)} tied MoneyPuck games "
+        f"resolved via NHL (cache {PROJECT_ROOT / DEFAULT_SHOOTOUT_CACHE})"
+    )
     inspection = inspect_advanced_stats_csv_for_cycle2_development(
         path,
         CYCLE2_DEVELOPMENT_SEASONS,
+        shootout_winners=so_home_wins,
+    )
+    current = parse_current_season_moneypuck_csv(
+        path,
+        season=CURRENT_SEASON,
+        shootout_winners=so_home_wins,
+    )
+    provisional = list(inspection.games) + list(current.winner_labeled)
+    period_cache = PROJECT_ROOT / DEFAULT_PERIOD_CACHE
+    period_outcomes = ensure_period_outcomes(
+        provisional,
+        cache_path=period_cache,
+        fetch_missing=True,
+    )
+    annotated_dev = annotate_period_outcomes(inspection.games, period_outcomes)
+    annotated_current = annotate_period_outcomes(current.winner_labeled, period_outcomes)
+    print(
+        f"  Period join: {len(period_outcomes)}/{len(provisional)} games labeled via NHL "
+        f"(cache {period_cache}); "
+        f"OT={sum(1 for g in annotated_dev + annotated_current if g.decided_in_overtime)}"
     )
     schedule = schedule_history_from_moneypuck_csv(path, seasons=CYCLE2_DEVELOPMENT_SEASONS)
     development_rows = eligible_frozen_training_rows(
-        build_frozen_training_rows(inspection.games, inspection.records, schedule)
+        build_frozen_training_rows(annotated_dev, inspection.records, schedule)
     )
-    current = parse_current_season_moneypuck_csv(path, season=CURRENT_SEASON)
-    games = list(inspection.games) + list(current.winner_labeled)
+    games = list(annotated_dev) + list(annotated_current)
     records = dict(inspection.records)
     records.update(current.xgoal_records)
     full_schedule = list(schedule) + list(current.schedule_history)
+    so_in_history = sum(1 for game in games if game.decided_in_shootout)
+    ot_in_history = sum(1 for game in games if game.decided_in_overtime)
     print(
-        f"  {len(inspection.games)} development games, "
-        f"{len(current.winner_labeled)} current-season games with a winner, "
+        f"  {len(annotated_dev)} development games, "
+        f"{len(annotated_current)} current-season games with a winner "
+        f"({so_in_history} shootout, {ot_in_history} overtime), "
         f"{len(development_rows)} eligible development rows"
     )
     _SOURCE = FeatureSource(games, records, full_schedule, development_rows)
@@ -181,7 +226,7 @@ def load_source(
     return _SOURCE
 
 
-def _public_row(row: dict) -> dict:
+def _public_row(row: dict, *, decided_in_shootout: bool = False) -> dict:
     season = int(row["season"])
     home = str(row["home_team_id"])
     away = str(row["away_team_id"])
@@ -196,6 +241,9 @@ def _public_row(row: dict) -> dict:
         "home_wins": int(row["home_win"]),
         "home_score": int(row["home_score"]),
         "away_score": int(row["away_score"]),
+        "decided_in_shootout": int(
+            bool(row.get("decided_in_shootout", decided_in_shootout))
+        ),
     }
     for column in FROZEN_FEATURE_COLUMNS:
         public[column] = float(row[column])
@@ -232,15 +280,20 @@ def _snapshot_row(source: FeatureSource, game) -> dict | None:
         "home_win": game.home_win,
         "home_score": game.home_score,
         "away_score": game.away_score,
+        "decided_in_shootout": bool(game.decided_in_shootout),
     }
     row.update(snapshot.as_feature_row())
     return _public_row(row)
 
 
 def feature_frame(source: FeatureSource | None = None) -> pd.DataFrame:
-    """One row per eligible game, with the frozen 25 features and the home-win label."""
+    """One row per eligible game, with the frozen features and the home-win label."""
     source = source or load_source()
-    rows = [_public_row(row) for row in source.development_rows]
+    so_by_id = {game.game_id: bool(game.decided_in_shootout) for game in source.games}
+    rows = [
+        _public_row(row, decided_in_shootout=so_by_id.get(str(row["game_id"]), False))
+        for row in source.development_rows
+    ]
     current_games = [game for game in source.games if game.season == CURRENT_SEASON]
     print(f"Scoring {len(current_games)} current-season games with the frozen snapshot...")
     for index, game in enumerate(current_games, start=1):
@@ -298,7 +351,7 @@ def calendar_schedule_for_fatigue(
 
 
 def features_for_game(game: dict, source: FeatureSource | None = None) -> dict | None:
-    """Pregame 25-vector for one matchup. Completed results on that date are excluded."""
+    """Pregame frozen feature vector for one matchup. Same-day results are excluded."""
     source = source or load_source()
     game_date = game["date"]
     if isinstance(game_date, str):

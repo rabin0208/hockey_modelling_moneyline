@@ -3,9 +3,10 @@ Leave-one-season-out accuracy and betting ROI for the frozen moneyline model.
 
 Each held-out season is scored by the same logistic regression the slate uses
 (standard scaling, lbfgs, max_iter=1000), trained on the other seasons and the
-frozen 25 features. ROI assumes a $1 moneyline bet on the model's predicted
-winner at the Action Network closing price. When data/opening_odds.csv exists,
-the same picks are also scored at the opening price.
+frozen 27 SO-branch features (includes shootout-decided games in both train and
+eval). ROI assumes a $1 moneyline bet on the model's predicted winner at the
+Action Network closing price. When data/opening_odds.csv exists, the same picks
+are also scored at the opening price.
 """
 
 import os
@@ -226,11 +227,17 @@ def main():
     held_out_home_ml = []
     held_out_away_ml = []
 
+    if 'decided_in_shootout' not in df.columns:
+        df['decided_in_shootout'] = 0
+    so_mask = df['decided_in_shootout'].fillna(0).astype(int).astype(bool)
+    print(f"  Shootout-labeled games: {int(so_mask.sum())} (included in train and eval)")
+
     for season in seasons:
         test_df = df[df['season'] == season]
         train_df = df[df['season'] != season]
         label = SEASON_LABELS.get(int(season), str(season))
-        print(f"\n{label}: train {len(train_df)} / test {len(test_df)}")
+        n_so_test = int(test_df['decided_in_shootout'].fillna(0).astype(int).sum())
+        print(f"\n{label}: train {len(train_df)} / test {len(test_df)} ({n_so_test} shootout)")
         metrics = evaluate_season(train_df, test_df, feature_cols)
         print(
             f"  acc={metrics['accuracy']:.1%}  "

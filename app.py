@@ -588,16 +588,16 @@ def render_results() -> None:
     use_open = market.startswith("Opening")
     if use_open:
         st.caption(
-            "Each season is held out and scored by the frozen logistic regression, "
-            "trained on the other seasons with the 25 moneyline features. "
+            "Each season is held out and scored by the SO-branch logistic regression "
+            "(27 features: 4-season priors/Elo, OT/SO recency; includes shootout games in fit). "
             f"ROI is a $1 bet on the predicted winner when its edge over the vig-free opening line "
             f"is at least {edge_percent}%. Payout uses the opening moneyline for that side. "
             "Action Network Open coverage starts in 2023-24."
         )
     else:
         st.caption(
-            "Each season is held out and scored by the frozen logistic regression, "
-            "trained on the other seasons with the 25 moneyline features. "
+            "Each season is held out and scored by the SO-branch logistic regression "
+            "(27 features: 4-season priors/Elo, OT/SO recency; includes shootout games in fit). "
             "Accuracy uses every game. ROI is a $1 bet on the predicted winner when its edge "
             f"over the vig-free closing line is at least {edge_percent}%. "
             "Payout uses the closing moneyline for that side."

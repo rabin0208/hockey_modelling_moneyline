@@ -1,9 +1,7 @@
-"""Issue #45 unscored-target frozen feature parity primitive.
+"""Unscored-target frozen feature parity primitive.
 
-This module does not change frozen training-time feature semantics. It provides
-one target representation and one prior-history replay path that can construct
-the Issue #40 frozen 25-column vector without target outcomes or a target
-advanced-stat record.
+Builds the promoted SO-branch frozen feature vector from completed priors only
+(no target outcomes / advanced-stat record for the target game).
 """
 
 from __future__ import annotations
@@ -15,12 +13,16 @@ from datetime import date, datetime
 from typing import Any, Mapping, Sequence
 
 from hockey_moneyline.advanced_stats import AdvancedTeamGame
-from hockey_moneyline.elo import ELO_FEATURE_COLUMN, ELO_INITIAL, updated_ratings
+from hockey_moneyline.elo import ELO_FEATURE_COLUMN, EloEvent, ratings_from_events
 from hockey_moneyline.errors import FeatureError
-from hockey_moneyline.features import TeamState
+from hockey_moneyline.features import (
+    EXTRA_TIME_RECENCY_FEATURE_COLUMNS,
+    REDUNDANT_GOAL_DIFF_COLUMNS,
+    TeamState,
+)
 from hockey_moneyline.nhl_api import NHLScheduleGame
 from hockey_moneyline.normalize import canonical_moneypuck_team_code
-from hockey_moneyline.provenance import MIN_PRIOR_GAMES
+from hockey_moneyline.provenance import MIN_PRIOR_GAMES, seasons_in_prior_window
 from hockey_moneyline.schedule_load import (
     ScheduleHistoryGame,
     merge_calendar_schedule_for_fatigue,
@@ -32,9 +34,13 @@ from hockey_moneyline.schedule_load_ablation import (
 )
 from hockey_moneyline.schema import FEATURE_COLUMNS, NormalizedGame, validate_games
 
-FROZEN_ISSUE40_FEATURE_COLUMNS = (
-    PLUS_XGOAL_PLUS_PRIOR_SCHEDULE_LOAD_COMPACT_FEATURE_COLUMNS
-)
+# Promoted SO family: prior Issue #40 compact set minus redundant goal diffs,
+# plus last-10 OT/SO rate and win counts.
+FROZEN_ISSUE40_FEATURE_COLUMNS = tuple(
+    column
+    for column in PLUS_XGOAL_PLUS_PRIOR_SCHEDULE_LOAD_COMPACT_FEATURE_COLUMNS
+    if column not in REDUNDANT_GOAL_DIFF_COLUMNS
+) + EXTRA_TIME_RECENCY_FEATURE_COLUMNS
 
 
 @dataclass(frozen=True, slots=True)
@@ -185,15 +191,19 @@ def _base_and_elo_snapshot(
     completed_history: Sequence[NormalizedGame],
 ) -> dict[str, float]:
     states: dict[str, TeamState] = defaultdict(TeamState)
-    ratings: dict[str, float] = defaultdict(lambda: ELO_INITIAL)
+    elo_events: list[EloEvent] = []
 
     for game in completed_history:
+        so = bool(game.decided_in_shootout)
+        ot = bool(game.decided_in_overtime)
         states[game.home_team_id].update(
             won=bool(game.home_win),
             goals_for=game.home_score,
             goals_against=game.away_score,
             is_home=True,
             season=game.season,
+            decided_in_shootout=so,
+            decided_in_overtime=ot,
         )
         states[game.away_team_id].update(
             won=not bool(game.home_win),
@@ -201,15 +211,20 @@ def _base_and_elo_snapshot(
             goals_against=game.home_score,
             is_home=False,
             season=game.season,
+            decided_in_shootout=so,
+            decided_in_overtime=ot,
         )
-        new_home, new_away = updated_ratings(
-            ratings[game.home_team_id],
-            ratings[game.away_team_id],
-            bool(game.home_win),
+        elo_events.append(
+            EloEvent(
+                season=game.season,
+                home_team_id=game.home_team_id,
+                away_team_id=game.away_team_id,
+                home_won=bool(game.home_win),
+                decided_in_shootout=so,
+            )
         )
-        ratings[game.home_team_id] = new_home
-        ratings[game.away_team_id] = new_away
 
+    ratings = ratings_from_events(elo_events, target.season)
     home = states[target.home_team_id].snapshot(target.season)
     away = states[target.away_team_id].snapshot(target.season)
     row = {
@@ -237,6 +252,11 @@ def _base_and_elo_snapshot(
     }
     if tuple(row) != FEATURE_COLUMNS + (ELO_FEATURE_COLUMN,):
         raise FeatureError("Unscored base/Elo snapshot altered frozen feature order")
+    # Experimental extras (kept after the frozen 19+Elo block).
+    row["home_recent_extra_time_rate"] = float(home["recent_extra_time_rate"])
+    row["away_recent_extra_time_rate"] = float(away["recent_extra_time_rate"])
+    row["home_recent_extra_time_wins"] = float(home["recent_extra_time_wins"])
+    row["away_recent_extra_time_wins"] = float(away["recent_extra_time_wins"])
     return row
 
 
@@ -269,10 +289,13 @@ def _xgoal_snapshot(
     completed_history: Sequence[NormalizedGame],
     records: Mapping[tuple[str, str], AdvancedTeamGame],
 ) -> dict[str, float]:
+    allowed = seasons_in_prior_window(target.season)
     state: dict[str, dict[str, float]] = defaultdict(
         lambda: {"for": 0.0, "against": 0.0, "games": 0.0}
     )
     for game in completed_history:
+        if allowed is not None and game.season not in allowed:
+            continue
         for team_id, opponent_id in (
             (game.home_team_id, game.away_team_id),
             (game.away_team_id, game.home_team_id),
@@ -391,11 +414,14 @@ def build_unscored_frozen_feature_snapshot(
     calendar_schedule: Sequence[ScheduleHistoryGame] = (),
     min_prior_games: int = MIN_PRIOR_GAMES,
 ) -> FrozenFeatureSnapshot:
-    """Emit the frozen 25 values from completed priors plus optional calendar fatigue."""
+    """Emit the frozen feature values from completed priors plus optional calendar fatigue."""
 
     assert_prior_schedule_load_compact_contract()
-    if len(FROZEN_ISSUE40_FEATURE_COLUMNS) != 25:
-        raise FeatureError("Issue #40 frozen feature family is no longer exactly 25 columns")
+    if len(FROZEN_ISSUE40_FEATURE_COLUMNS) != 27:
+        raise FeatureError(
+            "Frozen feature family must be exactly 27 columns "
+            f"(got {len(FROZEN_ISSUE40_FEATURE_COLUMNS)})"
+        )
 
     ordered = _validate_completed_prior_history(target, completed_history)
     schedule_ordered = validate_schedule_history(schedule_history)

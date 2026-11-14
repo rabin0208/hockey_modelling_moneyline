@@ -54,6 +54,8 @@ class NormalizeReport:
     games: list[NormalizedGame]
     skipped_tied_scores: int = 0
     skipped_tied_scores_by_season: dict[int, int] = field(default_factory=dict)
+    shootout_resolved: int = 0
+    shootout_resolved_by_season: dict[int, int] = field(default_factory=dict)
     normalized_games_by_season: dict[int, int] = field(default_factory=dict)
     notes: list[str] = field(default_factory=list)
 
@@ -115,7 +117,13 @@ def _row_season(row: Mapping[str, Any]) -> int:
         raise SchemaError(f"MoneyPuck row has invalid season: {row.get('season')!r}") from exc
 
 
-def _home_row_to_mapping(row: Mapping[str, Any], source: str) -> dict[str, Any]:
+def _home_row_to_mapping(
+    row: Mapping[str, Any],
+    source: str,
+    *,
+    home_win: int | None = None,
+    decided_in_shootout: bool = False,
+) -> dict[str, Any]:
     game_id = str(row.get("gameId") or "")
     if not game_id:
         raise SchemaError("Completed game is missing gameId")
@@ -126,6 +134,19 @@ def _home_row_to_mapping(row: Mapping[str, Any], source: str) -> dict[str, Any]:
         raise SchemaError(f"Game {game_id} maps home and away to the same team {home}")
     home_score = _int_score(row.get("goalsFor"), game_id=game_id, field="goalsFor")
     away_score = _int_score(row.get("goalsAgainst"), game_id=game_id, field="goalsAgainst")
+    if decided_in_shootout:
+        if home_score != away_score:
+            raise SchemaError(
+                f"Shootout-decided game {game_id} must keep tied MoneyPuck scores; "
+                f"got {home_score}-{away_score}"
+            )
+        if home_win not in (0, 1):
+            raise SchemaError(
+                f"Shootout-decided game {game_id} requires an explicit home_win 0/1"
+            )
+        resolved_home_win = int(home_win)
+    else:
+        resolved_home_win = home_win_from_scores(home_score, away_score)
     return {
         "game_id": game_id,
         "game_date": parse_game_date(row["gameDate"]).isoformat(),
@@ -137,7 +158,8 @@ def _home_row_to_mapping(row: Mapping[str, Any], source: str) -> dict[str, Any]:
         "away_team_name": away,
         "home_score": home_score,
         "away_score": away_score,
-        "home_win": home_win_from_scores(home_score, away_score),
+        "home_win": resolved_home_win,
+        "decided_in_shootout": decided_in_shootout,
         "home_team_abbrev": home,
         "away_team_abbrev": away,
         "source": source,
@@ -165,11 +187,14 @@ def games_from_moneypuck_rows(
     rows: Iterable[Mapping[str, Any]],
     seasons: Iterable[int] | None = None,
     source: str = SOURCE_ID,
+    shootout_winners: Mapping[str, int] | None = None,
 ) -> NormalizeReport:
     allowed = set(seasons) if seasons is not None else None
+    so_wins = dict(shootout_winners or {})
     homes: dict[str, dict[str, Any]] = {}
     aways: dict[str, Mapping[str, Any]] = {}
     skipped_by_season: Counter[int] = Counter()
+    resolved_by_season: Counter[int] = Counter()
 
     for row in rows:
         if str(row.get("situation") or "").strip() != MONEYPUCK_SITUATION:
@@ -186,9 +211,19 @@ def games_from_moneypuck_rows(
             home_score = _int_score(row.get("goalsFor"), game_id=game_id, field="goalsFor")
             away_score = _int_score(row.get("goalsAgainst"), game_id=game_id, field="goalsAgainst")
             if home_score == away_score:
-                skipped_by_season[season] += 1
-                continue
-            mapped = _home_row_to_mapping(row, source)
+                so_home_win = so_wins.get(game_id)
+                if so_home_win is None:
+                    skipped_by_season[season] += 1
+                    continue
+                mapped = _home_row_to_mapping(
+                    row,
+                    source,
+                    home_win=int(so_home_win),
+                    decided_in_shootout=True,
+                )
+                resolved_by_season[season] += 1
+            else:
+                mapped = _home_row_to_mapping(row, source)
             existing = homes.get(game_id)
             if existing is not None and existing != mapped:
                 raise SchemaError(f"Conflicting payloads for game_id {game_id}")
@@ -209,17 +244,24 @@ def games_from_moneypuck_rows(
     ordered = validate_games(games)
     normalized_by_season = Counter(game.season for game in ordered)
     skipped_tied_scores = sum(skipped_by_season.values())
+    shootout_resolved = sum(resolved_by_season.values())
     notes = []
+    if shootout_resolved:
+        notes.append(
+            f"Included {shootout_resolved} regular-season shootout games by joining "
+            "NHL final winners onto tied MoneyPuck situation=all scores."
+        )
     if skipped_tied_scores:
         notes.append(
             f"Excluded {skipped_tied_scores} regular-season HOME rows with tied "
-            "MoneyPuck situation=all scores. This file does not identify a "
-            "shootout winner, and no winner was invented."
+            "MoneyPuck situation=all scores and no NHL shootout winner available."
         )
     return NormalizeReport(
         games=ordered,
         skipped_tied_scores=skipped_tied_scores,
         skipped_tied_scores_by_season=dict(sorted(skipped_by_season.items())),
+        shootout_resolved=shootout_resolved,
+        shootout_resolved_by_season=dict(sorted(resolved_by_season.items())),
         normalized_games_by_season=dict(sorted(normalized_by_season.items())),
         notes=notes,
     )
@@ -229,6 +271,7 @@ def games_from_moneypuck_csv(
     path: Path,
     seasons: Iterable[int] | None = None,
     source: str = SOURCE_ID,
+    shootout_winners: Mapping[str, int] | None = None,
 ) -> NormalizeReport:
     try:
         with path.open("r", encoding="utf-8", newline="") as handle:
@@ -238,6 +281,11 @@ def games_from_moneypuck_csv(
             missing = [column for column in REQUIRED_SOURCE_COLUMNS if column not in reader.fieldnames]
             if missing:
                 raise SchemaError(f"MoneyPuck file is missing columns {missing}")
-            return games_from_moneypuck_rows(reader, seasons=seasons, source=source)
+            return games_from_moneypuck_rows(
+                reader,
+                seasons=seasons,
+                source=source,
+                shootout_winners=shootout_winners,
+            )
     except OSError as exc:
         raise SchemaError(f"Unreadable MoneyPuck file {path}") from exc
